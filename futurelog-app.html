@@ -424,6 +424,44 @@ mark { background:rgba(139,44,44,.12);color:var(--red);border-radius:2px;padding
 .mc-month-item:last-child { border-bottom:none; }
 .mc-month-item input[type=checkbox] { width:14px;height:14px;accent-color:var(--ink);flex-shrink:0;cursor:pointer; }
 .mc-month-item span { font-family:'Crimson Pro',Georgia,serif;font-size:13px;color:var(--ink2);flex:1; }
+
+/* ── PHOTOS ── */
+.detail-photos { margin-bottom:24px; }
+.photo-upload-zone {
+  border:.5px solid var(--rule-s);border-radius:2px;background:var(--sheet);
+  padding:12px 16px;display:flex;align-items:center;gap:12px;cursor:pointer;
+  transition:background .15s,border-color .15s;
+}
+.photo-upload-zone:hover { border-color:var(--ink3); }
+.photo-upload-zone.drag-over { background:var(--faint);border-color:var(--ink3); }
+.photo-upload-icon { width:30px;height:30px;border:.5px solid var(--rule-s);border-radius:2px;display:flex;align-items:center;justify-content:center;flex-shrink:0; }
+.photo-upload-label { font-family:'DM Mono',monospace;font-size:10px;letter-spacing:.06em;color:var(--ink);display:block; }
+.photo-upload-sub { font-family:'DM Mono',monospace;font-size:8px;letter-spacing:.04em;color:var(--muted);margin-top:2px;display:block; }
+.photo-grid { display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px; }
+.photo-card { background:var(--sheet);border:.5px solid var(--rule-s);border-radius:2px;overflow:hidden;position:relative; }
+.photo-thumb-wrap { width:100%;aspect-ratio:4/3;overflow:hidden;position:relative;cursor:zoom-in; }
+.photo-thumb { width:100%;height:100%;object-fit:cover;display:block; }
+.photo-del { position:absolute;top:5px;right:5px;width:20px;height:20px;border:.5px solid rgba(0,0,0,0.22);border-radius:2px;background:rgba(255,255,255,0.88);font-size:12px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--ink3);line-height:1;font-family:'DM Mono',monospace;padding:0; }
+[data-dark] .photo-del { background:rgba(30,28,24,0.88);border-color:rgba(255,255,255,0.18);color:var(--ink2); }
+.photo-caption { padding:6px 10px 9px;font-family:'Crimson Pro',Georgia,serif;font-size:12px;font-style:italic;color:var(--ink2);border:none;outline:none;background:transparent;width:100%;resize:none;overflow:hidden;transition:color .25s; }
+.photo-caption::placeholder { color:var(--faint); }
+
+/* ── LIGHTBOX ── */
+#photo-lightbox { display:none;position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:300;flex-direction:column;align-items:center;justify-content:center;touch-action:none; }
+#photo-lightbox.open { display:flex; }
+#lightbox-img-wrap { position:relative;width:100%;height:100%;display:flex;align-items:center;justify-content:center;overflow:hidden; }
+#lightbox-img { max-width:100%;max-height:100%;object-fit:contain;transform-origin:center center;transition:transform .1s ease;user-select:none;-webkit-user-drag:none; }
+#lightbox-close { position:fixed;top:calc(var(--safe-top) + 12px);right:16px;width:32px;height:32px;border:none;background:rgba(255,255,255,.15);border-radius:50%;color:#fff;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:10;font-family:'DM Mono',monospace; }
+#lightbox-caption { position:fixed;bottom:calc(var(--safe-bot) + 16px);left:50%;transform:translateX(-50%);font-family:'Crimson Pro',Georgia,serif;font-size:14px;font-style:italic;color:rgba(255,255,255,.7);text-align:center;max-width:80%;pointer-events:none; }
+
+/* print photos */
+@media print {
+  .photo-grid { display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px; }
+  .photo-card { break-inside:avoid; }
+  .photo-thumb { width:100%;height:auto;display:block; }
+  .photo-del { display:none!important; }
+  .photo-caption { font-family:'Crimson Pro',Georgia,serif;font-size:11px;font-style:italic;color:#4a4742;padding:4px 8px 6px; }
+}
 </style>
 </head>
 <body>
@@ -546,14 +584,33 @@ mark { background:rgba(139,44,44,.12);color:var(--red);border-radius:2px;padding
 </div>
 
 <input type="file" id="imp-file" accept=".json" style="display:none" onchange="handleImport(event)">
+<input type="file" id="photo-file-input" accept="image/*" style="display:none" multiple onchange="handlePhotoFiles(this.files)">
 <div class="toast" id="toast"></div>
 <div id="print-appendix"></div>
+
+<div id="photo-lightbox">
+  <button id="lightbox-close" onclick="closeLightbox()">×</button>
+  <div id="lightbox-img-wrap">
+    <img id="lightbox-img" src="" alt="">
+  </div>
+  <div id="lightbox-caption"></div>
+</div>
 
 <script>
 const STORE='futurelog_v5',DKKEY='futurelog_dark';
 const MONTHS=['January','February','March','April','May','June','July','August','September','October','November','December'];
 function load(){try{return JSON.parse(localStorage.getItem(STORE))||null}catch{return null}}
-function save(){localStorage.setItem(STORE,JSON.stringify(db))}
+function save(){
+  try{
+    const data=JSON.stringify(db);
+    localStorage.setItem(STORE,data);
+    const used=new Blob([data]).size;
+    const limit=5*1024*1024;
+    if(used>limit*0.8)showToast('⚠ Storage '+Math.round(used/1024)+'KB / 5MB — export a backup soon');
+  }catch(e){
+    showToast('⚠ Storage full — export backup now!');
+  }
+}
 function uid(){return Math.random().toString(36).slice(2)+Date.now().toString(36)}
 function esc(s){return s==null?'':String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
 function autoH(ta){ta.style.height='auto';ta.style.height=ta.scrollHeight+'px'}
@@ -590,7 +647,7 @@ function newPage(title,startMonth){
   const cells=[];for(let m=si;m<=11;m++)cells.push({id:uid(),month:MONTHS[m],monthIdx:m,items:[]});
   return{id:uid(),title:title||'',startMonth:si,cells};
 }
-function newItem(text){return{id:uid(),text:text||'',done:false,notes:'',subtasks:[],resources:[]}}
+function newItem(text){return{id:uid(),text:text||'',done:false,notes:'',subtasks:[],resources:[],photos:[]}}
 function newSubtask(text){return{id:uid(),text:text||'',done:false}}
 function newResource(text){return{id:uid(),text:text||'',done:false}}
 function hasDetail(item){
@@ -606,6 +663,7 @@ db.pages.forEach(p=>p.cells.forEach(c=>c.items.forEach(item=>{
   if(item.notes==null)item.notes='';
   if(item.subtasks==null)item.subtasks=[];
   if(item.resources==null)item.resources=[];
+  if(item.photos==null)item.photos=[];
   if(item.research==null)item.research={notes:'',tasks:[],contacts:[],log:[]};
   if(!item.detailId&&hasDetail(item))item.detailId=item.id;
   if(item.researchUrl){item.researchId=item.id;delete item.researchUrl;}
@@ -789,6 +847,14 @@ function openDetail(pi,ci,ii){
       <ul class="resource-ul" id="det-resources">${item.resources.map((r,ri)=>resourceHTML(r,ri)).join('')}</ul>
       <button class="detail-add-res" onclick="addResource()"><span class="add-plus">+</span><span class="add-txt">Add resource</span></button>
     </div>
+    <div class="detail-section-lbl">Photos</div>
+    <div class="detail-photos" id="det-photos-section">
+      <div class="photo-upload-zone" id="det-photo-zone" onclick="triggerPhotoInput()" ondragover="photoDragOver(event)" ondragleave="photoDragLeave(event)" ondrop="photoDrop(event)">
+        <div class="photo-upload-icon"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="1" y="3" width="12" height="9" rx="1" stroke="currentColor" stroke-width="0.75" fill="none" opacity="0.6"/><circle cx="4.5" cy="6.5" r="1.2" fill="currentColor" opacity="0.6"/><path d="M1 10.5l3-3 2.5 2.5L9 7.5l4 4" stroke="currentColor" stroke-width="0.75" fill="none" opacity="0.6"/><path d="M7 0.5v3M5.5 2L7 0.5L8.5 2" stroke="currentColor" stroke-width="0.75" stroke-linecap="round" opacity="0.6"/></svg></div>
+        <div><span class="photo-upload-label">Add image</span><span class="photo-upload-sub">Drag & drop · tap to browse · camera on iOS</span></div>
+      </div>
+      <div class="photo-grid" id="det-photo-grid"></div>
+    </div>
     <div class="detail-done-row">
       <div class="detail-done-toggle ${item.done?'checked':''}" id="det-done" onclick="toggleDetailDone()">${item.done?'✓':''}</div>
       <span class="detail-done-lbl">Mark as done</span>
@@ -799,6 +865,7 @@ function openDetail(pi,ci,ii){
     const t=document.getElementById('det-title');if(t)autoH(t);
     document.querySelectorAll('#det-subtasks .subtask-ta').forEach(ta=>autoH(ta));
     document.querySelectorAll('#det-resources .resource-ta').forEach(ta=>autoH(ta));
+    renderPhotos();
   });
 }
 function closeDetail(){
@@ -845,6 +912,192 @@ function renderResourceLinks(ri){
   } else if(linksDiv){linksDiv.remove()}
 }
 function renderResources(){if(!detailCtx)return;const res=db.pages[detailCtx.pi].cells[detailCtx.ci].items[detailCtx.ii].resources;const ul=document.getElementById('det-resources');if(!ul)return;ul.innerHTML=res.map((r,ri)=>resourceHTML(r,ri)).join('');requestAnimationFrame(()=>ul.querySelectorAll('.resource-ta').forEach(ta=>autoH(ta)))}
+
+/* ══════════════════════════════
+   PHOTOS
+   ══════════════════════════════ */
+
+function triggerPhotoInput(){
+  const inp=document.getElementById('photo-file-input');
+  /* iOS: no capture attribute so the sheet shows Camera + Photos options */
+  inp.removeAttribute('capture');
+  inp.click();
+}
+
+function photoDragOver(e){e.preventDefault();e.stopPropagation();document.getElementById('det-photo-zone').classList.add('drag-over');}
+function photoDragLeave(e){e.stopPropagation();document.getElementById('det-photo-zone').classList.remove('drag-over');}
+function photoDrop(e){
+  e.preventDefault();e.stopPropagation();
+  document.getElementById('det-photo-zone').classList.remove('drag-over');
+  if(e.dataTransfer.files.length)handlePhotoFiles(e.dataTransfer.files);
+}
+
+function handlePhotoFiles(files){
+  if(!detailCtx||!files.length)return;
+  Array.from(files).forEach(file=>{
+    if(!file.type.startsWith('image/'))return;
+    compressImage(file,300*1024,dataUrl=>{
+      const photo={id:uid(),data:dataUrl,caption:''};
+      db.pages[detailCtx.pi].cells[detailCtx.ci].items[detailCtx.ii].photos.push(photo);
+      save();
+      renderPhotos();
+    });
+  });
+}
+
+function compressImage(file,targetBytes,cb){
+  const img=new Image();
+  const reader=new FileReader();
+  reader.onload=e=>{
+    img.onload=()=>{
+      const MAX_DIM=1600;
+      let w=img.width,h=img.height;
+      if(w>MAX_DIM||h>MAX_DIM){const s=Math.min(MAX_DIM/w,MAX_DIM/h);w=Math.round(w*s);h=Math.round(h*s);}
+      const canvas=document.createElement('canvas');
+      canvas.width=w;canvas.height=h;
+      const ctx=canvas.getContext('2d');
+      ctx.drawImage(img,0,0,w,h);
+      /* binary search quality to hit target size */
+      let lo=0.3,hi=0.92,best=canvas.toDataURL('image/jpeg',0.75),iter=0;
+      while(iter++<8){
+        const mid=(lo+hi)/2;
+        const attempt=canvas.toDataURL('image/jpeg',mid);
+        const bytes=Math.round(attempt.length*0.75);
+        if(bytes<=targetBytes){best=attempt;lo=mid;}else{hi=mid;}
+        if(hi-lo<0.02)break;
+      }
+      cb(best);
+    };
+    img.src=e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+function renderPhotos(){
+  if(!detailCtx)return;
+  const item=db.pages[detailCtx.pi].cells[detailCtx.ci].items[detailCtx.ii];
+  const photos=item.photos||[];
+  const grid=document.getElementById('det-photo-grid');
+  if(!grid)return;
+  if(!photos.length){grid.innerHTML='';return;}
+  grid.innerHTML=photos.map((ph,pi2)=>`
+    <div class="photo-card" id="phcard-${ph.id}">
+      <div class="photo-thumb-wrap" onclick="openLightbox('${ph.id}')">
+        <img class="photo-thumb" src="${ph.data}" alt="">
+        <button class="photo-del" onclick="event.stopPropagation();delPhoto('${ph.id}')">×</button>
+      </div>
+      <textarea class="photo-caption" rows="1" placeholder="Caption…" onblur="setPhotoCaption('${ph.id}',this.value)" oninput="autoH(this)">${esc(ph.caption||'')}</textarea>
+    </div>`).join('');
+  requestAnimationFrame(()=>grid.querySelectorAll('.photo-caption').forEach(ta=>autoH(ta)));
+}
+
+function delPhoto(photoId){
+  if(!detailCtx)return;
+  const item=db.pages[detailCtx.pi].cells[detailCtx.ci].items[detailCtx.ii];
+  item.photos=item.photos.filter(p=>p.id!==photoId);
+  save();renderPhotos();
+}
+
+function setPhotoCaption(photoId,val){
+  if(!detailCtx)return;
+  const item=db.pages[detailCtx.pi].cells[detailCtx.ci].items[detailCtx.ii];
+  const ph=item.photos.find(p=>p.id===photoId);
+  if(ph){ph.caption=val;save();}
+}
+
+/* ── LIGHTBOX ── */
+let lbScale=1,lbOriginX=0,lbOriginY=0,lbPanX=0,lbPanY=0;
+let lbPinchDist=0,lbPointers={};
+
+function openLightbox(photoId){
+  if(!detailCtx)return;
+  const item=db.pages[detailCtx.pi].cells[detailCtx.ci].items[detailCtx.ii];
+  const ph=item.photos.find(p=>p.id===photoId);
+  if(!ph)return;
+  const lb=document.getElementById('photo-lightbox');
+  const img=document.getElementById('lightbox-img');
+  const cap=document.getElementById('lightbox-caption');
+  img.src=ph.data;
+  cap.textContent=ph.caption||'';
+  lbScale=1;lbPanX=0;lbPanY=0;
+  img.style.transform=`translate(${lbPanX}px,${lbPanY}px) scale(${lbScale})`;
+  lb.classList.add('open');
+  initLightboxGestures(img);
+}
+
+function closeLightbox(){
+  document.getElementById('photo-lightbox').classList.remove('open');
+  document.getElementById('lightbox-img').src='';
+  lbPointers={};
+}
+
+function initLightboxGestures(img){
+  const wrap=document.getElementById('lightbox-img-wrap');
+  wrap.ontouchstart=null;wrap.ontouchmove=null;wrap.ontouchend=null;
+  wrap.onmousedown=null;
+
+  /* touch: pinch-to-zoom + pan */
+  wrap.addEventListener('touchstart',e=>{
+    e.preventDefault();
+    Array.from(e.changedTouches).forEach(t=>{lbPointers[t.identifier]={x:t.clientX,y:t.clientY};});
+    if(Object.keys(lbPointers).length===2){
+      const pts=Object.values(lbPointers);
+      lbPinchDist=Math.hypot(pts[1].x-pts[0].x,pts[1].y-pts[0].y);
+    }
+  },{passive:false});
+
+  wrap.addEventListener('touchmove',e=>{
+    e.preventDefault();
+    Array.from(e.changedTouches).forEach(t=>{
+      if(lbPointers[t.identifier]){
+        const dx=t.clientX-lbPointers[t.identifier].x;
+        const dy=t.clientY-lbPointers[t.identifier].y;
+        lbPointers[t.identifier]={x:t.clientX,y:t.clientY};
+        if(Object.keys(lbPointers).length===1){lbPanX+=dx;lbPanY+=dy;}
+      }
+    });
+    if(Object.keys(lbPointers).length===2){
+      const pts=Object.values(lbPointers);
+      const dist=Math.hypot(pts[1].x-pts[0].x,pts[1].y-pts[0].y);
+      const delta=dist/lbPinchDist;
+      lbScale=Math.min(Math.max(lbScale*delta,0.5),6);
+      lbPinchDist=dist;
+    }
+    img.style.transform=`translate(${lbPanX}px,${lbPanY}px) scale(${lbScale})`;
+  },{passive:false});
+
+  wrap.addEventListener('touchend',e=>{
+    Array.from(e.changedTouches).forEach(t=>{delete lbPointers[t.identifier];});
+    if(lbScale<1){lbScale=1;lbPanX=0;lbPanY=0;img.style.transform=`translate(0px,0px) scale(1)`;}
+  },{passive:false});
+
+  /* mouse: drag to pan when zoomed */
+  let mouseDown=false,msx=0,msy=0;
+  wrap.addEventListener('mousedown',e=>{if(lbScale>1){mouseDown=true;msx=e.clientX;msy=e.clientY;}});
+  wrap.addEventListener('mousemove',e=>{if(!mouseDown)return;lbPanX+=e.clientX-msx;lbPanY+=e.clientY-msy;msx=e.clientX;msy=e.clientY;img.style.transform=`translate(${lbPanX}px,${lbPanY}px) scale(${lbScale})`;});
+  wrap.addEventListener('mouseup',()=>{mouseDown=false;});
+
+  /* double-click to toggle zoom */
+  wrap.addEventListener('dblclick',e=>{
+    if(lbScale>1){lbScale=1;lbPanX=0;lbPanY=0;}
+    else{lbScale=2.5;lbPanX=(wrap.clientWidth/2-e.offsetX)*1.5;lbPanY=(wrap.clientHeight/2-e.offsetY)*1.5;}
+    img.style.transition='transform .2s ease';
+    img.style.transform=`translate(${lbPanX}px,${lbPanY}px) scale(${lbScale})`;
+    setTimeout(()=>{img.style.transition='transform .1s ease';},220);
+  });
+
+  /* wheel zoom on desktop */
+  wrap.addEventListener('wheel',e=>{
+    e.preventDefault();
+    lbScale=Math.min(Math.max(lbScale*(e.deltaY<0?1.15:0.87),0.5),6);
+    img.style.transform=`translate(${lbPanX}px,${lbPanY}px) scale(${lbScale})`;
+  },{passive:false});
+
+  /* close on lightbox bg tap */
+  document.getElementById('photo-lightbox').addEventListener('click',e=>{
+    if(e.target===document.getElementById('photo-lightbox')||e.target===wrap)closeLightbox();
+  });
+}
 
 /* ── RESEARCH PANEL ── */
 let rpPI=null,rpCI=null,rpII=null;
@@ -1182,6 +1435,15 @@ window.addEventListener('beforeprint',()=>{
             item.resources.forEach(r=>{
               html+=`<div class="pa-list-item${r.done?' done':''}">${r.done?'☑':'☐'} ${esc(r.text||'—')}</div>`;
               extractLinks(r.text).forEach(u=>{html+=`<div class="pa-list-link">${esc(u)}</div>`;});
+            });
+            html+=`</div>`;
+          }
+          if(item.photos&&item.photos.length){
+            html+=`<div class="pa-section-lbl">Photos</div><div class="photo-grid" style="margin-bottom:20px;">`;
+            item.photos.forEach(ph=>{
+              html+=`<div class="photo-card"><img class="photo-thumb" src="${ph.data}" alt="" style="width:100%;height:auto;display:block;">`;
+              if(ph.caption)html+=`<div class="photo-caption" style="padding:5px 8px 7px;font-family:'Crimson Pro',Georgia,serif;font-size:11px;font-style:italic;color:#4a4742;">${esc(ph.caption)}</div>`;
+              html+=`</div>`;
             });
             html+=`</div>`;
           }
