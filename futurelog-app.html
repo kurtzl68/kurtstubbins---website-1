@@ -413,14 +413,20 @@ mark { background:rgba(139,44,44,.12);color:var(--red);border-radius:2px;padding
 .rp-card-name[data-placeholder]:empty:before { font-size:14px;font-weight:400; }
 
 #print-appendix { display:none; }
+
+/* ── MOVE / COPY MODAL ── */
+.mc-tabs { display:flex;gap:0;margin-bottom:16px;border:.5px solid var(--rule-s);border-radius:2px;overflow:hidden; }
+.mc-tab { flex:1;padding:9px;border:none;background:transparent;font-family:'DM Mono',monospace;font-size:8.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);cursor:pointer;transition:all .15s; }
+.mc-tab.active { background:var(--ink);color:var(--bg); }
+.mc-month-list { max-height:220px;overflow-y:auto;border:.5px solid var(--rule-s);border-radius:2px;margin-bottom:8px; }
+.mc-group-hdr { font-family:'DM Mono',monospace;font-size:7.5px;letter-spacing:.15em;text-transform:uppercase;color:var(--muted);padding:8px 12px 5px;background:var(--bg);position:sticky;top:0; }
+.mc-month-item { display:flex;align-items:center;gap:10px;padding:9px 12px;border-bottom:.5px solid var(--rule);cursor:pointer; }
+.mc-month-item:last-child { border-bottom:none; }
+.mc-month-item input[type=checkbox] { width:14px;height:14px;accent-color:var(--ink);flex-shrink:0;cursor:pointer; }
+.mc-month-item span { font-family:'Crimson Pro',Georgia,serif;font-size:13px;color:var(--ink2);flex:1; }
 </style>
 </head>
 <body>
-<script>
-  if (sessionStorage.getItem('futurelog_auth') !== 'verified') {
-    window.location.href = 'futurelog.html';
-  }
-</script>
 <div id="app">
   <div id="topbar">
     <a class="wordmark" href="index.html">Future Log</a>
@@ -517,6 +523,26 @@ mark { background:rgba(139,44,44,.12);color:var(--red);border-radius:2px;padding
   <div class="s-close" onclick="closeSearch()">Close ×</div>
   <div class="s-box"><div class="s-icon">↳</div><input type="text" id="s-field" placeholder="Search entries, months, titles…" oninput="doSearch(this.value)" autocomplete="off" autocorrect="off"></div>
   <div id="s-results"></div>
+</div>
+
+<div class="modal-bg" id="move-copy-modal" onclick="if(event.target===this)closeMoveCopy()">
+  <div class="bottom-sheet"><div class="bs-handle"></div><div class="bs-body">
+    <div class="bs-title">Move / Copy entry</div>
+    <div class="mc-tabs">
+      <button class="mc-tab active" id="mc-tab-move" onclick="mcSwitchTab('move')">Move to</button>
+      <button class="mc-tab" id="mc-tab-copy" onclick="mcSwitchTab('copy')">Copy to</button>
+    </div>
+    <div id="mc-pane-move">
+      <div class="field-row"><div class="field-lbl">Page</div><select class="field-sel" id="mc-move-page" onchange="renderMoveCopyMonths('move')"></select></div>
+      <div class="field-row"><div class="field-lbl">Month</div><select class="field-sel" id="mc-move-month"></select></div>
+      <button class="bs-btn" onclick="confirmMove()">Move entry</button>
+    </div>
+    <div id="mc-pane-copy" style="display:none">
+      <div class="field-lbl" style="margin-bottom:10px">Select months to copy to:</div>
+      <div class="mc-month-list" id="mc-copy-list"></div>
+      <button class="bs-btn" onclick="confirmCopy()">Copy to selected</button>
+    </div>
+  </div></div>
 </div>
 
 <input type="file" id="imp-file" accept=".json" style="display:none" onchange="handleImport(event)">
@@ -620,7 +646,7 @@ function itemHTML(item,pi,ci,ii){
   const resAction=researchExists?'Open →':'+ Create';
   const detEx=detailExists?' exists':'';
   const resEx=researchExists?' exists':'';
-  return`<li class="item-li${item.done?' done':''}${hd}" id="li-${item.id}"><div class="item-row"><div class="bullet-wrap" onclick="toggleDone(${pi},${ci},${ii})"><div class="bdot"></div></div><textarea class="item-ta" rows="1" placeholder="Entry…" onchange="setItemText(${pi},${ci},${ii},this.value)" onblur="setItemText(${pi},${ci},${ii},this.value)" oninput="autoH(this)" onkeydown="itemKey(event,${pi},${ci},${ii})">${esc(item.text)}</textarea><div class="item-actions"><button class="expand-btn" onclick="toggleTrigger(event,${pi},${ci},${ii})" title="Open child page">▸</button><button class="del-btn" onclick="delItem(${pi},${ci},${ii})">×</button></div></div><div class="trigger-panel" id="tp-${item.id}" style="display:none" onclick="event.stopPropagation()"><div class="tp-label">Open child page as —</div><div class="tp-btns"><button class="tp-btn${detEx}" onclick="triggerDetail(${pi},${ci},${ii})"><span class="tp-type">Detail</span><span class="tp-action">${detAction}</span><span class="tp-desc">Notes &amp; subtasks</span></button><button class="tp-btn${resEx}" onclick="triggerResearch(${pi},${ci},${ii})"><span class="tp-type">Research</span><span class="tp-action">${resAction}</span><span class="tp-desc">Contacts, task log</span></button></div></div></li>`;
+  return`<li class="item-li${item.done?' done':''}${hd}" id="li-${item.id}"><div class="item-row"><div class="bullet-wrap" onclick="toggleDone(${pi},${ci},${ii})"><div class="bdot"></div></div><textarea class="item-ta" rows="1" placeholder="Entry…" data-pi="${pi}" data-ci="${ci}" data-ii="${ii}" onchange="setItemText(${pi},${ci},${ii},this.value)" onblur="setItemText(${pi},${ci},${ii},this.value)" oninput="autoH(this)" onkeydown="itemKey(event,${pi},${ci},${ii})">${esc(item.text)}</textarea><div class="item-actions"><button class="expand-btn" onclick="toggleTrigger(event,${pi},${ci},${ii})" title="Open child page">▸</button><button class="del-btn" onclick="delItem(${pi},${ci},${ii})">×</button></div></div><div class="trigger-panel" id="tp-${item.id}" style="display:none" onclick="event.stopPropagation()"><div class="tp-label">Open child page as —</div><div class="tp-btns"><button class="tp-btn${detEx}" onclick="triggerDetail(${pi},${ci},${ii})"><span class="tp-type">Detail</span><span class="tp-action">${detAction}</span><span class="tp-desc">Notes &amp; subtasks</span></button><button class="tp-btn${resEx}" onclick="triggerResearch(${pi},${ci},${ii})"><span class="tp-type">Research</span><span class="tp-action">${resAction}</span><span class="tp-desc">Contacts, task log</span></button></div></div></li>`;
 }
 
 /* ── ROW HEIGHT SYNC ── */
@@ -1199,6 +1225,113 @@ window.addEventListener('beforeprint',()=>{
   ap.innerHTML=html;
 });
 window.addEventListener('afterprint',()=>{document.querySelectorAll('[data-print-hdr]').forEach(el=>el.remove());document.getElementById('print-appendix').innerHTML='';requestAnimationFrame(syncAllRows);});
+
+/* ── LONG-PRESS → MOVE / COPY ── */
+let lpTimer=null,lpActive=false;
+const track=document.getElementById('pages-track');
+
+track.addEventListener('touchstart',e=>{
+  const ta=e.target.closest('.item-ta');if(!ta)return;
+  const pi=+ta.dataset.pi,ci=+ta.dataset.ci,ii=+ta.dataset.ii;
+  lpActive=false;
+  lpTimer=setTimeout(()=>{lpActive=true;openMoveCopy(pi,ci,ii);},500);
+},{passive:true});
+track.addEventListener('touchmove',()=>{if(lpTimer){clearTimeout(lpTimer);lpTimer=null;}},{passive:true});
+track.addEventListener('touchend',()=>{if(lpTimer){clearTimeout(lpTimer);lpTimer=null;}},{passive:true});
+
+track.addEventListener('mousedown',e=>{
+  const ta=e.target.closest('.item-ta');if(!ta)return;
+  const pi=+ta.dataset.pi,ci=+ta.dataset.ci,ii=+ta.dataset.ii;
+  lpActive=false;
+  lpTimer=setTimeout(()=>{lpActive=true;openMoveCopy(pi,ci,ii);},600);
+});
+document.addEventListener('mousemove',()=>{if(lpTimer){clearTimeout(lpTimer);lpTimer=null;}});
+document.addEventListener('mouseup',()=>{if(lpTimer){clearTimeout(lpTimer);lpTimer=null;}});
+
+/* ── MOVE / COPY FUNCTIONS ── */
+let mcCtx=null,mcTab='move';
+
+function openMoveCopy(pi,ci,ii){
+  mcCtx={pi,ci,ii};mcTab='move';
+  /* reset tabs */
+  document.getElementById('mc-tab-move').classList.add('active');
+  document.getElementById('mc-tab-copy').classList.remove('active');
+  document.getElementById('mc-pane-move').style.display='';
+  document.getElementById('mc-pane-copy').style.display='none';
+  /* populate page selects */
+  const moveSel=document.getElementById('mc-move-page');
+  moveSel.innerHTML=db.pages.map((p,i)=>`<option value="${i}">${esc(p.title||p.cells[0]?.month||'Page '+(i+1))}</option>`).join('');
+  moveSel.value=pi;
+  renderMoveCopyMonths('move');
+  /* build copy list */
+  let html='';
+  db.pages.forEach((p,pIdx)=>{
+    const pgLabel=esc(p.title||p.cells[0]?.month||'Page '+(pIdx+1));
+    html+=`<div class="mc-group-hdr">${pgLabel}</div>`;
+    p.cells.forEach((cell,cIdx)=>{
+      const checked=(pIdx===pi&&cIdx===ci)?'checked':'';
+      html+=`<div class="mc-month-item"><input type="checkbox" id="mc-cb-${pIdx}-${cIdx}" value="${pIdx}:${cIdx}" ${checked}><span>${esc(cell.month||'—')}</span></div>`;
+    });
+  });
+  document.getElementById('mc-copy-list').innerHTML=html;
+  document.getElementById('move-copy-modal').classList.add('open');
+}
+
+function closeMoveCopy(){document.getElementById('move-copy-modal').classList.remove('open');mcCtx=null;}
+
+function mcSwitchTab(tab){
+  mcTab=tab;
+  document.getElementById('mc-tab-move').classList.toggle('active',tab==='move');
+  document.getElementById('mc-tab-copy').classList.toggle('active',tab==='copy');
+  document.getElementById('mc-pane-move').style.display=tab==='move'?'':'none';
+  document.getElementById('mc-pane-copy').style.display=tab==='copy'?'':'none';
+}
+
+function renderMoveCopyMonths(mode){
+  const pIdx=+document.getElementById('mc-move-page').value;
+  const cells=db.pages[pIdx]?.cells||[];
+  const sel=document.getElementById('mc-move-month');
+  sel.innerHTML=cells.map((cell,ci)=>`<option value="${ci}">${esc(cell.month||'—')}</option>`).join('');
+}
+
+function confirmMove(){
+  if(!mcCtx)return;
+  const {pi,ci,ii}=mcCtx;
+  const tPi=+document.getElementById('mc-move-page').value;
+  const tCi=+document.getElementById('mc-move-month').value;
+  if(tPi===pi&&tCi===ci){showToast('Already in that cell');return;}
+  const item=db.pages[pi].cells[ci].items.splice(ii,1)[0];
+  db.pages[tPi].cells[tCi].items.push(item);
+  save();
+  reRenderCell(pi,ci);
+  reRenderCell(tPi,tCi);
+  closeMoveCopy();
+  showToast('Moved to '+esc(db.pages[tPi].cells[tCi].month));
+}
+
+function confirmCopy(){
+  if(!mcCtx)return;
+  const {pi,ci,ii}=mcCtx;
+  const srcItem=db.pages[pi].cells[ci].items[ii];
+  const checks=document.querySelectorAll('#mc-copy-list input[type=checkbox]:checked');
+  if(!checks.length){showToast('Select at least one month');return;}
+  const affected=new Set();
+  checks.forEach(cb=>{
+    const [tPi,tCi]=cb.value.split(':').map(Number);
+    const clone=JSON.parse(JSON.stringify(srcItem));
+    clone.id=uid();
+    if(clone.subtasks)clone.subtasks.forEach(s=>{s.id=uid();});
+    if(clone.resources)clone.resources.forEach(r=>{r.id=uid();});
+    if(clone.detailId)clone.detailId=uid();
+    if(clone.researchId)clone.researchId=uid();
+    db.pages[tPi].cells[tCi].items.push(clone);
+    affected.add(`${tPi}:${tCi}`);
+  });
+  save();
+  affected.forEach(key=>{const [tPi,tCi]=key.split(':').map(Number);reRenderCell(tPi,tCi);});
+  closeMoveCopy();
+  showToast('Copied to '+checks.length+' month'+(checks.length>1?'s':''));
+}
 
 /* ── RESIZE (JS drag) ── */
 function initResizeHandles(){
