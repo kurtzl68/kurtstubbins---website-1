@@ -624,12 +624,6 @@ select.sel:focus{border-color:var(--ink)}
 </head>
 <body>
 
-<script>
-  if (sessionStorage.getItem('boxscout_auth') !== 'verified') {
-    window.location.href = 'boxscout.html';
-  }
-</script>
-
 <header>
   <div class="logo"><span class="logo-icon">&#128230;</span><span class="logo-box">Box</span><span class="logo-scout">Scout</span></div>
   <div class="hdr-right">
@@ -1075,7 +1069,7 @@ function cardHTML(b){
 
     // Label — with autocomplete datalist
     +'<div class="field wide"><label>Box Label</label>'
-    +'<input type="text" list="dl-labels" value="'+esc(b.label)+'" placeholder="e.g. Heavy books, Winter coats…" onchange="setField('+b.id+',\'label\',this.value);rebuildDataLists()" oninput="setField('+b.id+',\'label\',this.value)">'
+    +'<input type="text" list="dl-labels" value="'+esc(b.label)+'" placeholder="e.g. Heavy books, Winter coats…" onchange="setField('+b.id+',\'label\',this.value);rebuildDataLists()" oninput="debouncedSetField('+b.id+',\'label\',this.value)">'
     +'<span class="ac-hint">&#9660; Start typing or tap the arrow to reuse a previous label</span>'
     +'</div>'
 
@@ -1106,7 +1100,7 @@ function cardHTML(b){
     // Contents — textarea (preserves line breaks) + suggestion picker
     +'<div class="field wide"><label>Contents</label>'
     +'<div class="contents-wrap">'
-    +'<textarea id="ta-'+b.id+'" placeholder="Paste or type your inventory list — each item on its own line…" onchange="setField('+b.id+',\'contents\',this.value);rebuildDataLists()" oninput="setField('+b.id+',\'contents\',this.value)">'+esc(b.contents)+'</textarea>'
+    +'<textarea id="ta-'+b.id+'" placeholder="Paste or type your inventory list — each item on its own line…" onchange="setField('+b.id+',\'contents\',this.value);rebuildDataLists()" oninput="debouncedSetField('+b.id+',\'contents\',this.value)">'+esc(b.contents)+'</textarea>'
     +'<div class="contents-suggestions" id="cs-'+b.id+'">'
     +'<button class="cs-toggle" onclick="toggleSuggestions('+b.id+',event)" title="Reuse a previous contents entry">&#9660; Previous entries</button>'
     +'<div class="cs-list" id="csl-'+b.id+'"></div>'
@@ -1127,7 +1121,7 @@ function cardHTML(b){
     // Notes
     +'<div class="field wide"><label>Notes</label>'
     +'<div class="contents-wrap">'
-    +'<input type="text" id="notes-'+b.id+'" value="'+esc(b.notes)+'" placeholder="e.g. Stack upright, deliver to studio first…" onchange="setField('+b.id+',\'notes\',this.value)" oninput="setField('+b.id+',\'notes\',this.value)">'
+    +'<input type="text" id="notes-'+b.id+'" value="'+esc(b.notes)+'" placeholder="e.g. Stack upright, deliver to studio first…" onchange="setField('+b.id+',\'notes\',this.value)" oninput="debouncedSetField('+b.id+',\'notes\',this.value)">'
     +'<div class="contents-suggestions" id="ns-'+b.id+'">'
     +'<button class="cs-toggle" onclick="toggleNotesSuggestions('+b.id+',event)" title="Reuse a previous note">&#9660; Previous entries</button>'
     +'<div class="cs-list" id="nsl-'+b.id+'"></div>'
@@ -1223,6 +1217,17 @@ function cycleStatus(e, id){
   b.status = c[(c.indexOf(b.status)+1)%c.length];
   markDirty();
   render();
+}
+
+// ── DEBOUNCE UTILITY ──────────────────────────────────────────────────────
+// _dt: per-key timer map. Typing fires debouncedSetField which waits 350ms
+// after the last keystroke before calling setField. onchange still fires
+// immediately on blur so data is always saved when leaving a field.
+var _dt = {};
+function debouncedSetField(id, field, value){
+  var key = id+'_'+field;
+  clearTimeout(_dt[key]);
+  _dt[key] = setTimeout(function(){ setField(id, field, value); }, 350);
 }
 
 function setField(id, field, value){
@@ -1657,17 +1662,17 @@ markDirty = function(){
   autoSaveToLocalStorage();
 };
 
+var _autoSaveTimer = null;
 function autoSaveToLocalStorage(){
-  try {
-    var dataToSave = {
-      boxes: boxes,
-      customCats: customCats,
-      nextId: nextId
-    };
-    localStorage.setItem('boxscout_autosave', JSON.stringify(dataToSave));
-  } catch(e) {
-    console.warn('localStorage save failed (data still in memory):', e);
-  }
+  // Debounce: wait 2s after last change before writing to localStorage.
+  // This prevents JSON.stringify of large photo data on every keystroke.
+  clearTimeout(_autoSaveTimer);
+  _autoSaveTimer = setTimeout(function(){
+    try {
+      var dataToSave = {boxes:boxes, customCats:customCats, nextId:nextId};
+      localStorage.setItem('boxscout_autosave', JSON.stringify(dataToSave));
+    } catch(e) {}
+  }, 2000);
 }
 
 function restoreFromLocalStorage(){

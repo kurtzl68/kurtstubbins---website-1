@@ -599,17 +599,50 @@ mark { background:rgba(139,44,44,.12);color:var(--red);border-radius:2px;padding
 <script>
 const STORE='futurelog_v5',DKKEY='futurelog_dark';
 const MONTHS=['January','February','March','April','May','June','July','August','September','October','November','December'];
+
 function load(){try{return JSON.parse(localStorage.getItem(STORE))||null}catch{return null}}
+
+/* Strip photos from db before writing to localStorage so base64 data
+   never bloats the 5 MB quota. Photos live in memory only; reload them
+   via JSON backup when returning to the app. */
+function dbWithoutPhotos(source){
+  const clone=JSON.parse(JSON.stringify(source));
+  clone.pages.forEach(p=>p.cells.forEach(c=>c.items.forEach(item=>{
+    item.photos=[];
+  })));
+  return clone;
+}
+
+/* Debounce handle — save runs 2 s after the last change, not on every keystroke */
+let _saveTimer=null;
 function save(){
-  try{
-    const data=JSON.stringify(db);
-    localStorage.setItem(STORE,data);
-    const used=new Blob([data]).size;
-    const limit=5*1024*1024;
-    if(used>limit*0.8)showToast('⚠ Storage '+Math.round(used/1024)+'KB / 5MB — export a backup soon');
-  }catch(e){
-    showToast('⚠ Storage full — export backup now!');
-  }
+  clearTimeout(_saveTimer);
+  _saveTimer=setTimeout(()=>{
+    try{
+      const stripped=dbWithoutPhotos(db);
+      const data=JSON.stringify(stripped);
+      localStorage.setItem(STORE,data);
+      const used=new Blob([data]).size;
+      const limit=5*1024*1024;
+      if(used>limit*0.8)showToast('⚠ Storage '+Math.round(used/1024)+'KB / 5MB — export a backup soon');
+    }catch(e){
+      showToast('⚠ Storage full — export backup now!');
+    }
+  },2000);
+}
+
+/* Show restore banner if session was recovered from localStorage */
+function maybeShowRestoreBanner(restoredDb){
+  if(!restoredDb)return;
+  let entryCount=0;
+  restoredDb.pages.forEach(p=>p.cells.forEach(c=>entryCount+=c.items.length));
+  const pageCount=restoredDb.pages.length;
+  const banner=document.createElement('div');
+  banner.id='restore-banner';
+  banner.style.cssText='position:fixed;top:0;left:0;right:0;z-index:500;background:#f5f0e8;border-bottom:.5px solid #c8bfaf;padding:9px 14px;display:flex;align-items:center;justify-content:space-between;font-family:"DM Mono",monospace;font-size:10px;letter-spacing:.04em;color:#5a5550;';
+  banner.innerHTML=`<span>Session restored · ${entryCount} entries across ${pageCount} page${pageCount!==1?'s':''} · Load your JSON backup to restore photos</span><button onclick="this.parentNode.remove()" style="background:none;border:.5px solid #c8bfaf;border-radius:2px;padding:3px 8px;font-family:inherit;font-size:10px;cursor:pointer;color:#5a5550;">Dismiss</button>`;
+  document.body.prepend(banner);
+  setTimeout(()=>{if(banner.parentNode)banner.remove();},8000);
 }
 function uid(){return Math.random().toString(36).slice(2)+Date.now().toString(36)}
 function esc(s){return s==null?'':String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
@@ -654,9 +687,11 @@ function hasDetail(item){
   return(item.notes&&item.notes.trim())||(item.subtasks&&item.subtasks.length>0)||(item.resources&&item.resources.length>0);
 }
 
-let db=load();
-const isValid=db&&db.pages&&db.pages.length&&db.pages[0].cells&&db.pages[0].cells.length&&db.pages[0].cells[0].monthIdx!=null&&db.pages[0].startMonth!=null;
-if(!isValid){db={pages:[newPage('',new Date().getMonth())]};save()}
+let _loadedDb=load();
+const isValid=_loadedDb&&_loadedDb.pages&&_loadedDb.pages.length&&_loadedDb.pages[0].cells&&_loadedDb.pages[0].cells.length&&_loadedDb.pages[0].cells[0].monthIdx!=null&&_loadedDb.pages[0].startMonth!=null;
+let db;
+if(!isValid){db={pages:[newPage('',new Date().getMonth())]};save();}
+else{db=_loadedDb;setTimeout(()=>maybeShowRestoreBanner(_loadedDb),400);}
 
 /* migrate */
 db.pages.forEach(p=>p.cells.forEach(c=>c.items.forEach(item=>{
