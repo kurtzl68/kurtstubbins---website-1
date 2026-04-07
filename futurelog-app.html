@@ -151,13 +151,20 @@ body {
 
 /* ── ITEM ACTION BUTTONS ── */
 .item-actions { display:flex;align-items:center;gap:2px;flex-shrink:0;margin-top:3px; }
-.expand-btn { flex-shrink:0;width:18px;height:18px;border:none;background:none;color:var(--muted);font-size:13px;cursor:pointer;opacity:0;transition:opacity .15s;display:flex;align-items:center;justify-content:center;line-height:1;font-family:'DM Mono',monospace;position:relative; }
+.expand-btn { flex-shrink:0;width:18px;height:18px;border:none;background:none;color:var(--muted);font-size:18px;cursor:pointer;opacity:0;transition:opacity .15s;display:flex;align-items:center;justify-content:center;line-height:1;font-family:'DM Mono',monospace;position:relative; }
 .item-li:hover .expand-btn { opacity:.6; }
 .expand-btn:hover { opacity:1!important; }
 .has-detail .expand-btn { opacity:.5;color:var(--ink3); }
 .has-detail .expand-btn::before { content:'';position:absolute;width:5px;height:5px;border-radius:50%;background:var(--ink3);top:-2px;right:-1px; }
 .del-btn { flex-shrink:0;width:14px;height:14px;border:none;background:none;color:var(--muted);font-size:12px;cursor:pointer;opacity:0;transition:opacity .15s;display:flex;align-items:center;justify-content:center;line-height:1;font-family:'DM Mono',monospace; }
 .item-li:hover .del-btn { opacity:1; }
+.drag-handle { flex-shrink:0;width:10px;margin-top:4px;display:flex;align-items:flex-start;justify-content:center;cursor:grab;opacity:0;transition:opacity .15s;color:var(--faint); }
+.drag-handle:active { cursor:grabbing; }
+.item-li:hover .drag-handle { opacity:.5; }
+.drag-handle:hover { opacity:1!important; }
+.item-li.dragging { opacity:.3;background:var(--faint);border-radius:2px; }
+.item-li.drag-over { border-top:2px solid var(--ink3); }
+.items-ul.drag-over-bottom { border-bottom:2px solid var(--ink3); }
 
 /* ── TRIGGER PANEL ── */
 .trigger-panel { margin-top:6px;background:var(--sheet);border:1px solid var(--rule);border-radius:2px;padding:10px 12px; }
@@ -729,7 +736,7 @@ function pageHTML(p,pi){
 }
 function cellHTML(p,cell,ci,pi){
   const items=cell.items.map((item,ii)=>itemHTML(item,pi,ci,ii)).join('');
-  return`<div class="month-cell" id="mc-${cell.id}"><div class="month-hdr"><span class="month-lbl">Month</span><input class="month-inp" value="${esc(cell.month)}" placeholder="—" onchange="setMonth(${pi},${ci},this.value)" onblur="setMonth(${pi},${ci},this.value)"></div><ul class="items-ul" id="ul-${cell.id}">${items}</ul><button class="add-btn" onclick="addItem(${pi},${ci})"><span class="add-plus">+</span><span class="add-txt">Add entry</span></button></div>`;
+  return`<div class="month-cell" id="mc-${cell.id}"><div class="month-hdr"><span class="month-lbl">Month</span><input class="month-inp" value="${esc(cell.month)}" placeholder="—" onchange="setMonth(${pi},${ci},this.value)" onblur="setMonth(${pi},${ci},this.value)"></div><ul class="items-ul" id="ul-${cell.id}" ondragover="ulDragOver(event,${pi},${ci})" ondragleave="ulDragLeave(event)" ondrop="ulDrop(event,${pi},${ci})">${items}</ul><button class="add-btn" onclick="addItem(${pi},${ci})"><span class="add-plus">+</span><span class="add-txt">Add entry</span></button></div>`;
 }
 function itemHTML(item,pi,ci,ii){
   const detailExists=!!(item.detailId||hasDetail(item));
@@ -739,7 +746,7 @@ function itemHTML(item,pi,ci,ii){
   const resAction=researchExists?'Open →':'+ Create';
   const detEx=detailExists?' exists':'';
   const resEx=researchExists?' exists':'';
-  return`<li class="item-li${item.done?' done':''}${hd}" id="li-${item.id}"><div class="item-row"><div class="bullet-wrap" onclick="toggleDone(${pi},${ci},${ii})"><div class="bdot"></div></div><textarea class="item-ta" rows="1" placeholder="Entry…" data-pi="${pi}" data-ci="${ci}" data-ii="${ii}" onchange="setItemText(${pi},${ci},${ii},this.value)" onblur="setItemText(${pi},${ci},${ii},this.value)" oninput="autoH(this)" onkeydown="itemKey(event,${pi},${ci},${ii})">${esc(item.text)}</textarea><div class="item-actions"><button class="expand-btn" onclick="toggleTrigger(event,${pi},${ci},${ii})" title="Open child page">▸</button><button class="del-btn" onclick="delItem(${pi},${ci},${ii})">×</button></div></div><div class="trigger-panel" id="tp-${item.id}" style="display:none" onclick="event.stopPropagation()"><div class="tp-label">Open child page as —</div><div class="tp-btns"><button class="tp-btn${detEx}" onclick="triggerDetail(${pi},${ci},${ii})"><span class="tp-type">Detail</span><span class="tp-action">${detAction}</span><span class="tp-desc">Notes &amp; subtasks</span></button><button class="tp-btn${resEx}" onclick="triggerResearch(${pi},${ci},${ii})"><span class="tp-type">Research</span><span class="tp-action">${resAction}</span><span class="tp-desc">Contacts, task log</span></button></div></div></li>`;
+  return`<li class="item-li${item.done?' done':''}${hd}" id="li-${item.id}" ondragover="itemDragOver(event,${pi},${ci},${ii})" ondragleave="itemDragLeave(event)" ondrop="itemDrop(event,${pi},${ci},${ii})"><div class="item-row"><div class="drag-handle" draggable="true" ondragstart="itemDragStart(event,${pi},${ci},${ii})" ondragend="itemDragEnd(event)" title="Drag to reorder"><svg width=\"8\" height=\"12\" viewBox=\"0 0 8 12\" fill=\"none\"><circle cx=\"2\" cy=\"2\" r=\"1.2\" fill=\"currentColor\"/><circle cx=\"6\" cy=\"2\" r=\"1.2\" fill=\"currentColor\"/><circle cx=\"2\" cy=\"6\" r=\"1.2\" fill=\"currentColor\"/><circle cx=\"6\" cy=\"6\" r=\"1.2\" fill=\"currentColor\"/><circle cx=\"2\" cy=\"10\" r=\"1.2\" fill=\"currentColor\"/><circle cx=\"6\" cy=\"10\" r=\"1.2\" fill=\"currentColor\"/></svg></div><div class="bullet-wrap" onclick="toggleDone(${pi},${ci},${ii})"><div class="bdot"></div></div><textarea class="item-ta" rows="1" placeholder="Entry…" data-pi="${pi}" data-ci="${ci}" data-ii="${ii}" onchange="setItemText(${pi},${ci},${ii},this.value)" onblur="setItemText(${pi},${ci},${ii},this.value)" oninput="autoH(this)" onkeydown="itemKey(event,${pi},${ci},${ii})">${esc(item.text)}</textarea><div class="item-actions"><button class="expand-btn" onclick="toggleTrigger(event,${pi},${ci},${ii})" title="Open child page">▸</button><button class="del-btn" onclick="delItem(${pi},${ci},${ii})">×</button></div></div><div class="trigger-panel" id="tp-${item.id}" style="display:none" onclick="event.stopPropagation()"><div class="tp-label">Open child page as —</div><div class="tp-btns"><button class="tp-btn${detEx}" onclick="triggerDetail(${pi},${ci},${ii})"><span class="tp-type">Detail</span><span class="tp-action">${detAction}</span><span class="tp-desc">Notes &amp; subtasks</span></button><button class="tp-btn${resEx}" onclick="triggerResearch(${pi},${ci},${ii})"><span class="tp-type">Research</span><span class="tp-action">${resAction}</span><span class="tp-desc">Contacts, task log</span></button></div></div></li>`;
 }
 
 /* ── ROW HEIGHT SYNC ── */
@@ -847,6 +854,80 @@ function addItem(pi,ci){
   requestAnimationFrame(()=>{const row=document.getElementById('mc-'+cell.id)?.closest('.month-row');if(row){const cells=row.querySelectorAll('.month-cell');cells.forEach(c=>{c.style.minHeight=''});let mx=280;cells.forEach(c=>{mx=Math.max(mx,c.scrollHeight)});cells.forEach(c=>{c.style.minHeight=mx+'px'})}});
 }
 function delItem(pi,ci,ii){db.pages[pi].cells[ci].items.splice(ii,1);save();reRenderCell(pi,ci)}
+
+/* ── REORDER: drag and drop ── */
+let _drag={pi:null,ci:null,ii:null};
+function itemDragStart(e,pi,ci,ii){
+  _drag={pi,ci,ii};
+  e.dataTransfer.effectAllowed='move';
+  e.dataTransfer.setData('text/plain','');
+  setTimeout(()=>{const el=document.getElementById('li-'+db.pages[pi].cells[ci].items[ii].id);if(el)el.classList.add('dragging');},0);
+}
+function itemDragEnd(e){
+  document.querySelectorAll('.item-li.dragging,.item-li.drag-over').forEach(el=>{el.classList.remove('dragging','drag-over')});
+  _drag={pi:null,ci:null,ii:null};
+}
+function itemDragOver(e,pi,ci,ii){
+  if(_drag.pi===null)return;
+  e.preventDefault();e.dataTransfer.dropEffect='move';
+  document.querySelectorAll('.item-li.drag-over').forEach(el=>el.classList.remove('drag-over'));
+  const el=document.getElementById('li-'+db.pages[pi].cells[ci].items[ii].id);
+  if(el&&!(pi===_drag.pi&&ci===_drag.ci&&ii===_drag.ii))el.classList.add('drag-over');
+}
+function itemDragLeave(e){
+  if(!e.currentTarget)return;
+  const related=e.relatedTarget;
+  if(related&&e.currentTarget.contains(related))return;
+  e.currentTarget.classList.remove('drag-over');
+}
+function itemDrop(e,tPi,tCi,tIi){
+  e.preventDefault();
+  const{pi:sPi,ci:sCi,ii:sIi}=_drag;
+  if(sPi===null||( sPi===tPi&&sCi===tCi&&sIi===tIi))return;
+  const srcItems=db.pages[sPi].cells[sCi].items;
+  const tgtItems=db.pages[tPi].cells[tCi].items;
+  const[moved]=srcItems.splice(sIi,1);
+  const adjustedTIi=(sPi===tPi&&sCi===tCi&&sIi<tIi)?tIi-1:tIi;
+  tgtItems.splice(adjustedTIi,0,moved);
+  save();
+  if(sPi===tPi&&sCi===tCi){reRenderCell(sPi,sCi);}
+  else{reRenderCell(sPi,sCi);reRenderCell(tPi,tCi);}
+}
+function ulDragOver(e,pi,ci){
+  if(_drag.pi===null)return;
+  const ul=e.currentTarget;
+  const items=ul.querySelectorAll('.item-li');
+  if(items.length===0){e.preventDefault();ul.classList.add('drag-over-bottom');return;}
+  const last=items[items.length-1];
+  const rect=last.getBoundingClientRect();
+  if(e.clientY>rect.bottom){e.preventDefault();ul.classList.add('drag-over-bottom');}
+}
+function ulDragLeave(e){
+  if(!e.currentTarget)return;
+  const related=e.relatedTarget;
+  if(related&&e.currentTarget.contains(related))return;
+  e.currentTarget.classList.remove('drag-over-bottom');
+}
+function ulDrop(e,tPi,tCi){
+  e.currentTarget.classList.remove('drag-over-bottom');
+  const{pi:sPi,ci:sCi,ii:sIi}=_drag;
+  if(sPi===null)return;
+  const ul=e.currentTarget;
+  const items=ul.querySelectorAll('.item-li');
+  if(items.length>0){
+    const last=items[items.length-1];
+    const rect=last.getBoundingClientRect();
+    if(e.clientY<=rect.bottom)return;
+  }
+  e.preventDefault();
+  const srcItems=db.pages[sPi].cells[sCi].items;
+  const tgtItems=db.pages[tPi].cells[tCi].items;
+  const[moved]=srcItems.splice(sIi,1);
+  tgtItems.push(moved);
+  save();
+  if(sPi===tPi&&sCi===tCi){reRenderCell(sPi,sCi);}
+  else{reRenderCell(sPi,sCi);reRenderCell(tPi,tCi);}
+}
 function itemKey(e,pi,ci,ii){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();addItem(pi,ci)}if(e.key==='Backspace'&&e.target.value===''){e.preventDefault();delItem(pi,ci,ii)}}
 function reRenderCell(pi,ci){
   const p=db.pages[pi],cell=p.cells[ci],old=document.getElementById('mc-'+cell.id);if(!old)return;
