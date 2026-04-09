@@ -232,6 +232,9 @@ body {
 .subtask-ta::placeholder,.resource-ta::placeholder { color:var(--faint);font-style:italic; }
 .subtask-del,.resource-del { flex-shrink:0;width:14px;height:14px;margin-top:4px;border:none;background:none;color:var(--muted);font-size:12px;cursor:pointer;opacity:0;transition:opacity .15s;display:flex;align-items:center;justify-content:center;line-height:1;font-family:'DM Mono',monospace; }
 .subtask-li:hover .subtask-del,.resource-li:hover .resource-del { opacity:1; }
+.subtask-reminder-btn { flex-shrink:0;width:14px;height:14px;border:none;background:none;color:var(--ink3);font-size:12px;cursor:pointer;transition:color .15s;display:flex;align-items:center;justify-content:center;line-height:1;font-family:monospace;padding:0;margin-right:6px; }
+.subtask-reminder-btn:hover { color:var(--ink); }
+.subtask-actions { display:flex;align-items:center;gap:0;margin-top:4px; }
 
 /* resource links rendered below textarea */
 .resource-link {
@@ -1029,7 +1032,7 @@ function setDetailNotes(v){if(!detailCtx)return;db.pages[detailCtx.pi].cells[det
 function toggleDetailDone(){if(!detailCtx)return;const item=db.pages[detailCtx.pi].cells[detailCtx.ci].items[detailCtx.ii];item.done=!item.done;save();const el=document.getElementById('det-done');el.classList.toggle('checked',item.done);el.textContent=item.done?'✓':''}
 
 /* ── SUBTASKS ── */
-function subtaskHTML(st,si){const badge=st.reminder?.dueDate?` <span class="reminder-badge">⏰ ${new Date(st.reminder.dueDate).toLocaleDateString()}</span>`:'';return`<li class="subtask-li${st.done?' done':''}${st.reminder?.dueDate?' has-reminder':''}" id="st-${st.id}"><div class="bullet-wrap" onclick="toggleSubtask(${si})"><div class="bdot"></div></div><textarea class="subtask-ta" rows="1" placeholder="Subtask…" data-si="${si}" onchange="setSubtaskText(${si},this.value)" onblur="setSubtaskText(${si},this.value)" oninput="autoH(this)" onkeydown="subtaskKey(event,${si})">${esc(st.text)}</textarea>${badge}<button class="subtask-del" onclick="delSubtask(${si})">×</button></li>`}
+function subtaskHTML(st,si){const stopwatch=st.reminder?.dueDate?`<button class="subtask-reminder-btn" onclick="openSubtaskReminder(${si})" title="${new Date(st.reminder.dueDate).toLocaleString()}">⏱</button>`:'';return`<li class="subtask-li${st.done?' done':''}${st.reminder?.dueDate?' has-reminder':''}" id="st-${st.id}"><div class="bullet-wrap" onclick="toggleSubtask(${si})"><div class="bdot"></div></div><textarea class="subtask-ta" rows="1" placeholder="Subtask…" data-si="${si}" onchange="setSubtaskText(${si},this.value)" onblur="setSubtaskText(${si},this.value)" oninput="autoH(this)" onkeydown="subtaskKey(event,${si})">${esc(st.text)}</textarea><div class="subtask-actions">${stopwatch}<button class="subtask-del" onclick="delSubtask(${si})">×</button></div></li>`}
 function addSubtask(){if(!detailCtx)return;const st=newSubtask('');db.pages[detailCtx.pi].cells[detailCtx.ci].items[detailCtx.ii].subtasks.push(st);save();renderSubtasks();requestAnimationFrame(()=>{const l=document.querySelector('#det-subtasks .subtask-li:last-child .subtask-ta');if(l){l.focus();autoH(l)}})}
 function delSubtask(si){if(!detailCtx)return;db.pages[detailCtx.pi].cells[detailCtx.ci].items[detailCtx.ii].subtasks.splice(si,1);save();renderSubtasks()}
 function setSubtaskText(si,v){if(!detailCtx)return;db.pages[detailCtx.pi].cells[detailCtx.ci].items[detailCtx.ii].subtasks[si].text=v;save()}
