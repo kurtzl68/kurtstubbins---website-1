@@ -227,14 +227,9 @@ body {
   text-decoration-color:var(--red);
   text-decoration-thickness:1.5px;
 }
-.subtask-li.has-reminder { background:rgba(139,44,44,.05);padding:6px 10px;margin:0 -10px;margin-left:-14px;padding-left:14px;border-radius:2px; }
-[data-dark] .subtask-li.has-reminder { background:rgba(196,122,106,.08); }
 .subtask-ta::placeholder,.resource-ta::placeholder { color:var(--faint);font-style:italic; }
 .subtask-del,.resource-del { flex-shrink:0;width:14px;height:14px;margin-top:4px;border:none;background:none;color:var(--muted);font-size:12px;cursor:pointer;opacity:0;transition:opacity .15s;display:flex;align-items:center;justify-content:center;line-height:1;font-family:'DM Mono',monospace; }
 .subtask-li:hover .subtask-del,.resource-li:hover .resource-del { opacity:1; }
-.subtask-reminder-btn { flex-shrink:0;width:14px;height:14px;border:none;background:none;color:var(--ink3);font-size:12px;cursor:pointer;transition:color .15s;display:flex;align-items:center;justify-content:center;line-height:1;font-family:monospace;padding:0;margin-right:6px; }
-.subtask-reminder-btn:hover { color:var(--ink); }
-.subtask-actions { display:flex;align-items:center;gap:0;margin-top:4px; }
 
 /* resource links rendered below textarea */
 .resource-link {
@@ -437,25 +432,6 @@ mark { background:rgba(139,44,44,.12);color:var(--red);border-radius:2px;padding
 .mc-month-item input[type=checkbox] { width:14px;height:14px;accent-color:var(--ink);flex-shrink:0;cursor:pointer; }
 .mc-month-item span { font-family:'Crimson Pro',Georgia,serif;font-size:13px;color:var(--ink2);flex:1; }
 
-/* ── REMINDER MODAL ── */
-#reminder-modal { display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:80;align-items:flex-end;justify-content:center;backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px); }
-#reminder-modal.open { display:flex; }
-.reminder-sheet { background:var(--sheet);width:100%;max-width:580px;border-radius:12px 12px 0 0;padding:8px 0 calc(var(--safe-bot) + 16px);animation:slideUp .28s cubic-bezier(.22,.68,0,1.2);transition:background .25s; }
-.reminder-handle { width:32px;height:3px;border-radius:2px;background:var(--faint);margin:8px auto 16px; }
-.reminder-body { padding:0 20px 4px; }
-.reminder-title { font-family:'DM Mono',monospace;font-size:9px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);margin-bottom:16px; }
-.reminder-row { margin-bottom:14px; }
-.reminder-lbl { font-family:'DM Mono',monospace;font-size:8px;letter-spacing:.15em;text-transform:uppercase;color:var(--muted);margin-bottom:6px; }
-.reminder-inp { width:100%;padding:10px 12px;border:.5px solid var(--rule-s);border-radius:2px;background:var(--bg);font-family:'DM Mono',monospace;font-size:11px;letter-spacing:.04em;color:var(--ink);outline:none;transition:border-color .15s;-webkit-appearance:none;appearance:none; }
-.reminder-inp:focus { border-color:var(--ink3); }
-.reminder-actions { display:flex;gap:8px;margin-top:16px; }
-.reminder-btn { flex:1;padding:13px;border:none;border-radius:2px;background:var(--ink);color:var(--bg);font-family:'DM Mono',monospace;font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;cursor:pointer;transition:opacity .15s; }
-.reminder-btn:active { opacity:.8; }
-.reminder-btn.secondary { background:var(--faint);color:var(--ink);border:.5px solid var(--rule-s); }
-.reminder-btn.secondary:active { opacity:.7; }
-
-.reminder-badge { display:inline-block;font-family:'DM Mono',monospace;font-size:7px;letter-spacing:.08em;text-transform:uppercase;background:var(--ink3);color:var(--sheet);padding:2px 6px;border-radius:2px;margin-left:6px; }
-
 /* ── PHOTOS ── */
 .detail-photos { margin-bottom:24px; }
 .photo-upload-zone {
@@ -614,18 +590,6 @@ mark { background:rgba(139,44,44,.12);color:var(--red);border-radius:2px;padding
   </div></div>
 </div>
 
-<div class="modal-bg" id="reminder-modal" onclick="if(event.target===this)closeReminder()">
-  <div class="reminder-sheet"><div class="reminder-handle"></div><div class="reminder-body">
-    <div class="reminder-title">Set reminder</div>
-    <div class="reminder-row"><div class="reminder-lbl">Due date & time</div><input type="datetime-local" class="reminder-inp" id="reminder-datetime"></div>
-    <div class="reminder-actions">
-      <button class="reminder-btn secondary" onclick="closeReminder()">Cancel</button>
-      <button class="reminder-btn" onclick="confirmReminder('internal')">Internal reminder</button>
-      <button class="reminder-btn" onclick="confirmReminder('ical')">Export to calendar</button>
-    </div>
-  </div></div>
-</div>
-
 <input type="file" id="imp-file" accept=".json" style="display:none" onchange="handleImport(event)">
 <input type="file" id="photo-file-input" accept="image/*" style="display:none" multiple onchange="handlePhotoFiles(this.files)">
 <div class="toast" id="toast"></div>
@@ -723,8 +687,8 @@ function newPage(title,startMonth){
   const cells=[];for(let m=si;m<=11;m++)cells.push({id:uid(),month:MONTHS[m],monthIdx:m,items:[]});
   return{id:uid(),title:title||'',startMonth:si,cells};
 }
-function newItem(text){return{id:uid(),text:text||'',done:false,notes:'',subtasks:[],resources:[],photos:[],reminder:{dueDate:null,notified:false}}}
-function newSubtask(text){return{id:uid(),text:text||'',done:false,reminder:{dueDate:null,notified:false}}}
+function newItem(text){return{id:uid(),text:text||'',done:false,notes:'',subtasks:[],resources:[],photos:[]}}
+function newSubtask(text){return{id:uid(),text:text||'',done:false}}
 function newResource(text){return{id:uid(),text:text||'',done:false}}
 function hasDetail(item){
   return(item.notes&&item.notes.trim())||(item.subtasks&&item.subtasks.length>0)||(item.resources&&item.resources.length>0);
@@ -743,8 +707,6 @@ db.pages.forEach(p=>p.cells.forEach(c=>c.items.forEach(item=>{
   if(item.resources==null)item.resources=[];
   if(item.photos==null)item.photos=[];
   if(item.research==null)item.research={notes:'',tasks:[],contacts:[],log:[]};
-  if(item.reminder==null)item.reminder={dueDate:null,notified:false};
-  if(item.subtasks)item.subtasks.forEach(st=>{if(st.reminder==null)st.reminder={dueDate:null,notified:false}});
   if(!item.detailId&&hasDetail(item))item.detailId=item.id;
   if(item.researchUrl){item.researchId=item.id;delete item.researchUrl;}
 })));save();
@@ -1032,129 +994,13 @@ function setDetailNotes(v){if(!detailCtx)return;db.pages[detailCtx.pi].cells[det
 function toggleDetailDone(){if(!detailCtx)return;const item=db.pages[detailCtx.pi].cells[detailCtx.ci].items[detailCtx.ii];item.done=!item.done;save();const el=document.getElementById('det-done');el.classList.toggle('checked',item.done);el.textContent=item.done?'✓':''}
 
 /* ── SUBTASKS ── */
-function subtaskHTML(st,si){const stopwatch=st.reminder?.dueDate?`<button class="subtask-reminder-btn" onclick="openSubtaskReminder(${si})" title="${new Date(st.reminder.dueDate).toLocaleString()}"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="6" cy="7" r="4.5" stroke="currentColor" stroke-width="0.75"/><line x1="6" y1="7" x2="6" y2="4" stroke="currentColor" stroke-width="0.75" stroke-linecap="round"/></svg></button>`:'';return`<li class="subtask-li${st.done?' done':''}${st.reminder?.dueDate?' has-reminder':''}" id="st-${st.id}"><div class="bullet-wrap" onclick="toggleSubtask(${si})"><div class="bdot"></div></div><textarea class="subtask-ta" rows="1" placeholder="Subtask…" data-si="${si}" onchange="setSubtaskText(${si},this.value)" onblur="setSubtaskText(${si},this.value)" oninput="autoH(this)" onkeydown="subtaskKey(event,${si})">${esc(st.text)}</textarea><div class="subtask-actions">${stopwatch}<button class="subtask-del" onclick="delSubtask(${si})">×</button></div></li>`}
+function subtaskHTML(st,si){return`<li class="subtask-li${st.done?' done':''}" id="st-${st.id}"><div class="bullet-wrap" onclick="toggleSubtask(${si})"><div class="bdot"></div></div><textarea class="subtask-ta" rows="1" placeholder="Subtask…" onchange="setSubtaskText(${si},this.value)" onblur="setSubtaskText(${si},this.value)" oninput="autoH(this)" onkeydown="subtaskKey(event,${si})">${esc(st.text)}</textarea><button class="subtask-del" onclick="delSubtask(${si})">×</button></li>`}
 function addSubtask(){if(!detailCtx)return;const st=newSubtask('');db.pages[detailCtx.pi].cells[detailCtx.ci].items[detailCtx.ii].subtasks.push(st);save();renderSubtasks();requestAnimationFrame(()=>{const l=document.querySelector('#det-subtasks .subtask-li:last-child .subtask-ta');if(l){l.focus();autoH(l)}})}
 function delSubtask(si){if(!detailCtx)return;db.pages[detailCtx.pi].cells[detailCtx.ci].items[detailCtx.ii].subtasks.splice(si,1);save();renderSubtasks()}
 function setSubtaskText(si,v){if(!detailCtx)return;db.pages[detailCtx.pi].cells[detailCtx.ci].items[detailCtx.ii].subtasks[si].text=v;save()}
 function toggleSubtask(si){if(!detailCtx)return;const st=db.pages[detailCtx.pi].cells[detailCtx.ci].items[detailCtx.ii].subtasks[si];st.done=!st.done;save();const li=document.getElementById('st-'+st.id);if(li)li.classList.toggle('done',st.done)}
 function subtaskKey(e,si){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();addSubtask()}if(e.key==='Backspace'&&e.target.value===''){e.preventDefault();delSubtask(si)}}
-function renderSubtasks(){if(!detailCtx)return;const subs=db.pages[detailCtx.pi].cells[detailCtx.ci].items[detailCtx.ii].subtasks;const ul=document.getElementById('det-subtasks');if(!ul)return;ul.innerHTML=subs.map((st,si)=>subtaskHTML(st,si)).join('');requestAnimationFrame(()=>{ul.querySelectorAll('.subtask-ta').forEach(ta=>autoH(ta));initSubtaskLongPress()})}
-
-/* ── SUBTASK LONG-PRESS → REMINDER ── */
-let stLpTimer=null;
-function initSubtaskLongPress(){
-  if(!detailCtx)return;
-  document.querySelectorAll('#det-subtasks .subtask-ta').forEach(ta=>{
-    const si=+ta.dataset.si;
-    ta.addEventListener('touchstart',e=>{
-      stLpTimer=setTimeout(()=>{openSubtaskReminder(si);},500);
-    },{passive:true});
-    ta.addEventListener('touchmove',()=>{if(stLpTimer){clearTimeout(stLpTimer);stLpTimer=null;}},{passive:true});
-    ta.addEventListener('touchend',()=>{if(stLpTimer){clearTimeout(stLpTimer);stLpTimer=null;}},{passive:true});
-    ta.addEventListener('mousedown',e=>{
-      stLpTimer=setTimeout(()=>{openSubtaskReminder(si);},600);
-    });
-    ta.addEventListener('mousemove',()=>{if(stLpTimer){clearTimeout(stLpTimer);stLpTimer=null;}});
-    ta.addEventListener('mouseup',()=>{if(stLpTimer){clearTimeout(stLpTimer);stLpTimer=null;}});
-  });
-}
-
-let remCtx={pi:null,ci:null,ii:null,si:null};
-function openSubtaskReminder(si){
-  if(!detailCtx)return;
-  remCtx={pi:detailCtx.pi,ci:detailCtx.ci,ii:detailCtx.ii,si};
-  const st=db.pages[detailCtx.pi].cells[detailCtx.ci].items[detailCtx.ii].subtasks[si];
-  const dtStr=st.reminder?.dueDate?new Date(st.reminder.dueDate).toISOString().slice(0,16):'';
-  document.getElementById('reminder-datetime').value=dtStr;
-  document.getElementById('reminder-modal').classList.add('open');
-}
-
-function closeReminder(){
-  document.getElementById('reminder-modal').classList.remove('open');
-  remCtx={pi:null,ci:null,ii:null,si:null};
-}
-
-function confirmReminder(type){
-  if(remCtx.si===null)return;
-  const dtVal=document.getElementById('reminder-datetime').value;
-  if(!dtVal){showToast('Select a date & time');return;}
-  const dueDate=new Date(dtVal).toISOString();
-  const st=db.pages[remCtx.pi].cells[remCtx.ci].items[remCtx.ii].subtasks[remCtx.si];
-  st.reminder={dueDate,notified:false};
-  save();
-  if(type==='internal'){
-    renderSubtasks();
-    closeReminder();
-    showToast('Reminder set');
-  } else if(type==='ical'){
-    downloadSubtaskICS(remCtx.pi,remCtx.ci,remCtx.ii,remCtx.si,st);
-    closeReminder();
-    showToast('iCal exported');
-  }
-}
-
-function downloadSubtaskICS(pi,ci,ii,si,subtask){
-  const item=db.pages[pi].cells[ci].items[ii];
-  const dueDate=new Date(subtask.reminder.dueDate);
-  const dtstart=dueDate.toISOString().replace(/[-:]/g,'').split('.')[0]+'Z';
-  const uid=`${subtask.id}@futurelog.local`;
-  const summary=subtask.text;
-  const description=`Entry: ${item.text}`;
-  const ics=`BEGIN:VCALENDAR
-VERSION:2.0
-PRODID:-//FutureLog//EN
-BEGIN:VEVENT
-UID:${uid}
-DTSTART:${dtstart}
-SUMMARY:${summary}
-DESCRIPTION:${description}
-END:VEVENT
-END:VCALENDAR`;
-  const blob=new Blob([ics],{type:'text/calendar'});
-  const url=URL.createObjectURL(blob);
-  const a=document.createElement('a');
-  a.href=url;
-  a.download=`reminder-${subtask.id}.ics`;
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
-/* ── SUBTASK REMINDER CHECKER ── */
-function initReminderChecker(){
-  setInterval(()=>{
-    const now=new Date();
-    db.pages.forEach(p=>{
-      p.cells.forEach(c=>{
-        c.items.forEach(item=>{
-          if(item.subtasks){
-            item.subtasks.forEach(st=>{
-              if(st.reminder?.dueDate&&!st.reminder.notified){
-                const due=new Date(st.reminder.dueDate);
-                if(now>=due&&now<new Date(due.getTime()+5*60000)){
-                  fireSubtaskReminder(item,st);
-                  st.reminder.notified=true;
-                  save();
-                }
-              }
-            });
-          }
-        });
-      });
-    });
-  },60000);
-}
-
-function fireSubtaskReminder(item,subtask){
-  const msg=`Subtask due: ${subtask.text} (${item.text})`;
-  showToast(msg);
-  if('Notification' in window&&Notification.permission==='granted'){
-    new Notification('FutureLog Subtask Reminder',{
-      body:msg,
-      icon:'/favicon.png',
-      tag:`reminder-${subtask.id}`
-    });
-  }
-}
+function renderSubtasks(){if(!detailCtx)return;const subs=db.pages[detailCtx.pi].cells[detailCtx.ci].items[detailCtx.ii].subtasks;const ul=document.getElementById('det-subtasks');if(!ul)return;ul.innerHTML=subs.map((st,si)=>subtaskHTML(st,si)).join('');requestAnimationFrame(()=>ul.querySelectorAll('.subtask-ta').forEach(ta=>autoH(ta)))}
 
 /* ── RESOURCES ── */
 function resourceHTML(r,ri){
@@ -1900,9 +1746,7 @@ window.addEventListener('resize',()=>{
 
 function checkHash(){const m=window.location.hash.match(/^#detail\/(\d+)\/(\d+)\/(\d+)$/);if(m){const pi=+m[1],ci=+m[2],ii=+m[3];if(db.pages[pi]?.cells[ci]?.items[ii])openDetail(pi,ci,ii)}}
 
-function initNotifications(){if('Notification' in window&&Notification.permission==='default'){Notification.requestPermission()}}
-
-try{render();checkHash();initReminderChecker();initNotifications()}catch(e){console.error('Init error:',e)}
+try{render();checkHash()}catch(e){console.error('Init error:',e)}
 </script>
 </body>
 </html>
