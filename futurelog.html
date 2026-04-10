@@ -315,6 +315,16 @@ mark { background:rgba(139,44,44,.12);color:var(--red);border-radius:2px;padding
 .toast { position:fixed;bottom:calc(var(--safe-bot) + 20px);left:50%;transform:translateX(-50%) translateY(6px);background:var(--ink);color:var(--bg);font-family:'DM Mono',monospace;font-size:9.5px;letter-spacing:.07em;text-transform:uppercase;padding:8px 16px;border-radius:20px;opacity:0;transition:all .22s ease;z-index:200;white-space:nowrap;pointer-events:none; }
 .toast.show { opacity:1;transform:translateX(-50%) translateY(0); }
 
+/* ── LOAD OVERLAY ── */
+#load-overlay{display:none;position:fixed;inset:0;z-index:600;background:var(--bg);flex-direction:column;align-items:center;justify-content:center;padding:32px;transition:background .25s;}
+#load-overlay.open{display:flex;}
+.lo-card{max-width:360px;width:100%;text-align:center;}
+.lo-wordmark{font-family:'DM Mono',monospace;font-size:9px;letter-spacing:.28em;text-transform:uppercase;color:var(--ink3);margin-bottom:36px;}
+.lo-heading{font-family:'Crimson Pro',Georgia,serif;font-size:26px;line-height:1.35;color:var(--ink);margin-bottom:10px;}
+.lo-sub{font-family:'DM Mono',monospace;font-size:10px;letter-spacing:.04em;color:var(--muted);margin-bottom:36px;line-height:1.8;}
+.lo-btn-primary{display:block;width:100%;padding:14px;border:none;border-radius:2px;background:var(--ink);color:var(--bg);font-family:'DM Mono',monospace;font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;cursor:pointer;transition:opacity .15s;margin-bottom:10px;}
+.lo-btn-primary:active{opacity:.8;}
+
 /* ════════════════════
    PRINT
    ════════════════════ */
@@ -480,6 +490,7 @@ mark { background:rgba(139,44,44,.12);color:var(--red);border-radius:2px;padding
       <button class="tb-btn" id="layout-btn" onclick="toggleLayout()">1 Col</button>
       <button class="tb-btn" onclick="window.print()">Print</button>
       <button class="tb-btn" onclick="openActions()">· · ·</button>
+      <button class="tb-btn" onclick="saveToFile()">Save</button>
       <button class="tb-btn ink" onclick="openNewPage()">+ Page</button>
       <div class="dark-btn" id="dark-btn" onclick="toggleDark()">☽</div>
     </div>
@@ -591,8 +602,17 @@ mark { background:rgba(139,44,44,.12);color:var(--red);border-radius:2px;padding
 </div>
 
 <input type="file" id="imp-file" accept=".json" style="display:none" onchange="handleImport(event)">
+<input type="file" id="load-file-input" accept=".json" style="display:none" onchange="handleLoadFile(event)">
 <input type="file" id="photo-file-input" accept="image/*" style="display:none" multiple onchange="handlePhotoFiles(this.files)">
 <div class="toast" id="toast"></div>
+<div id="load-overlay">
+  <div class="lo-card">
+    <div class="lo-wordmark">Future Log</div>
+    <div class="lo-heading">Load your FutureLog file</div>
+    <div class="lo-sub">Pick your saved .json file to restore<br>all entries and photos.</div>
+    <button class="lo-btn-primary" onclick="document.getElementById('load-file-input').click()">Choose file…</button>
+  </div>
+</div>
 <div id="print-appendix"></div>
 
 <div id="photo-lightbox">
@@ -605,6 +625,7 @@ mark { background:rgba(139,44,44,.12);color:var(--red);border-radius:2px;padding
 
 <script>
 const STORE='futurelog_v5',DKKEY='futurelog_dark';
+let _jsonLoaded=false;
 const MONTHS=['January','February','March','April','May','June','July','August','September','October','November','December'];
 
 function load(){try{return JSON.parse(localStorage.getItem(STORE))||null}catch{return null}}
@@ -638,19 +659,19 @@ function save(){
   },2000);
 }
 
-/* Show restore banner if session was recovered from localStorage */
-function maybeShowRestoreBanner(restoredDb){
-  if(!restoredDb)return;
-  let entryCount=0;
-  restoredDb.pages.forEach(p=>p.cells.forEach(c=>entryCount+=c.items.length));
-  const pageCount=restoredDb.pages.length;
+/* Restore banner — shown when localStorage data exists but no JSON file loaded this session */
+function maybeShowRestoreBanner(){
+  if(_jsonLoaded)return;
+  if(document.getElementById('restore-banner'))return;
   const banner=document.createElement('div');
   banner.id='restore-banner';
-  banner.style.cssText='position:fixed;top:0;left:0;right:0;z-index:500;background:#f5f0e8;border-bottom:.5px solid #c8bfaf;padding:9px 14px;display:flex;align-items:center;justify-content:space-between;font-family:"DM Mono",monospace;font-size:10px;letter-spacing:.04em;color:#5a5550;';
-  banner.innerHTML=`<span>Session restored · ${entryCount} entries across ${pageCount} page${pageCount!==1?'s':''} · Load your JSON backup to restore photos</span><button onclick="this.parentNode.remove()" style="background:none;border:.5px solid #c8bfaf;border-radius:2px;padding:3px 8px;font-family:inherit;font-size:10px;cursor:pointer;color:#5a5550;">Dismiss</button>`;
+  banner.style.cssText='position:fixed;top:0;left:0;right:0;z-index:500;background:#f5f0e8;border-bottom:.5px solid #c8bfaf;padding:9px 14px;display:flex;align-items:center;justify-content:space-between;gap:10px;font-family:"DM Mono",monospace;font-size:10px;letter-spacing:.04em;color:#5a5550;';
+  banner.innerHTML=`<span style="flex:1">Load your FutureLog file to begin — photos not yet restored</span><div style="display:flex;gap:6px;flex-shrink:0"><button onclick="document.getElementById('load-file-input').click()" style="background:#141210;color:#dedad4;border:none;border-radius:2px;padding:4px 10px;font-family:inherit;font-size:10px;letter-spacing:.06em;cursor:pointer;">Load file</button><button onclick="this.parentNode.parentNode.remove()" style="background:none;border:.5px solid #c8bfaf;border-radius:2px;padding:3px 8px;font-family:inherit;font-size:10px;cursor:pointer;color:#5a5550;">Dismiss</button></div>`;
   document.body.prepend(banner);
-  setTimeout(()=>{if(banner.parentNode)banner.remove();},8000);
 }
+/* ── LOAD OVERLAY ── */
+function showLoadOverlay(){document.getElementById('load-overlay').classList.add('open');}
+
 function uid(){return Math.random().toString(36).slice(2)+Date.now().toString(36)}
 function esc(s){return s==null?'':String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
 function autoH(ta){ta.style.height='auto';ta.style.height=ta.scrollHeight+'px'}
@@ -698,7 +719,7 @@ let _loadedDb=load();
 const isValid=_loadedDb&&_loadedDb.pages&&_loadedDb.pages.length&&_loadedDb.pages[0].cells&&_loadedDb.pages[0].cells.length&&_loadedDb.pages[0].cells[0].monthIdx!=null&&_loadedDb.pages[0].startMonth!=null;
 let db;
 if(!isValid){db={pages:[newPage('',new Date().getMonth())]};save();}
-else{db=_loadedDb;setTimeout(()=>maybeShowRestoreBanner(_loadedDb),400);}
+else{db=_loadedDb;}
 
 /* migrate */
 db.pages.forEach(p=>p.cells.forEach(c=>c.items.forEach(item=>{
@@ -1515,8 +1536,54 @@ function doSearch(q){
 /* ── EXPORT/IMPORT ── */
 function openActions(){document.getElementById('actions-modal').classList.add('open')}
 function closeActions(){document.getElementById('actions-modal').classList.remove('open')}
-function exportData(){const b=new Blob([JSON.stringify(db,null,2)],{type:'application/json'});const u=URL.createObjectURL(b);const a=document.createElement('a');a.href=u;a.download=`futurelog-${new Date().toISOString().split('T')[0]}.json`;a.click();URL.revokeObjectURL(u);showToast('Backup exported')}
-function handleImport(e){const file=e.target.files[0];if(!file)return;const r=new FileReader();r.onload=ev=>{try{const d=JSON.parse(ev.target.result);if(d.pages){db=d;save();curPage=0;render();showToast('Import successful')}}catch{showToast('Import failed')}};r.readAsText(file);e.target.value=''}
+function exportData(){saveToFile();}
+
+/* Save to file with iterative daily versioning: futurelog-YYYY-MM-DD-v1.json, v2, v3… */
+function saveToFile(){
+  const today=new Date().toISOString().split('T')[0];
+  const cntKey='futurelog_save_cnt_'+today;
+  const v=parseInt(localStorage.getItem(cntKey)||'0',10)+1;
+  localStorage.setItem(cntKey,v);
+  const filename='futurelog-'+today+'-v'+v+'.json';
+  const b=new Blob([JSON.stringify(db,null,2)],{type:'application/json'});
+  const u=URL.createObjectURL(b);const a=document.createElement('a');
+  a.href=u;a.download=filename;a.click();URL.revokeObjectURL(u);
+  _jsonLoaded=true;
+  save();
+  showToast('Saved — '+filename);
+}
+
+/* Load file handler — used by both the startup overlay and the restore banner */
+function handleLoadFile(e){
+  const file=e.target.files[0];if(!file)return;
+  const r=new FileReader();
+  r.onload=ev=>{
+    try{
+      const d=JSON.parse(ev.target.result);
+      if(d.pages){
+        db=d;
+        db.pages.forEach(p=>p.cells.forEach(c=>c.items.forEach(item=>{
+          if(item.notes==null)item.notes='';
+          if(item.subtasks==null)item.subtasks=[];
+          if(item.resources==null)item.resources=[];
+          if(item.photos==null)item.photos=[];
+          if(item.research==null)item.research={notes:'',tasks:[],contacts:[],log:[]};
+          if(!item.detailId&&hasDetail(item))item.detailId=item.id;
+          if(item.researchUrl){item.researchId=item.id;delete item.researchUrl;}
+        })));
+        _jsonLoaded=true;
+        save();curPage=0;render();
+        document.getElementById('load-overlay').classList.remove('open');
+        const banner=document.getElementById('restore-banner');if(banner)banner.remove();
+        showToast('File loaded');
+      }else{showToast('Invalid file');}
+    }catch{showToast('Load failed');}
+    e.target.value='';
+  };
+  r.readAsText(file);
+}
+
+function handleImport(e){const file=e.target.files[0];if(!file)return;const r=new FileReader();r.onload=ev=>{try{const d=JSON.parse(ev.target.result);if(d.pages){db=d;_jsonLoaded=true;save();curPage=0;render();const bn=document.getElementById('restore-banner');if(bn)bn.remove();showToast('Import successful')}}catch{showToast('Import failed')}};r.readAsText(file);e.target.value=''}
 
 /* ── PRINT ── */
 window.addEventListener('beforeprint',()=>{
@@ -1747,6 +1814,7 @@ window.addEventListener('resize',()=>{
 function checkHash(){const m=window.location.hash.match(/^#detail\/(\d+)\/(\d+)\/(\d+)$/);if(m){const pi=+m[1],ci=+m[2],ii=+m[3];if(db.pages[pi]?.cells[ci]?.items[ii])openDetail(pi,ci,ii)}}
 
 try{render();checkHash()}catch(e){console.error('Init error:',e)}
+showLoadOverlay();
 </script>
 </body>
 </html>
