@@ -630,47 +630,49 @@ const MONTHS=['January','February','March','April','May','June','July','August',
 
 function load(){try{return JSON.parse(localStorage.getItem(STORE))||null}catch{return null}}
 
-/* Strip photos from db before writing to localStorage so base64 data
-   never bloats the 5 MB quota. Photos live in memory only; reload them
-   via JSON backup when returning to the app. */
-function dbWithoutPhotos(source){
-  const clone=JSON.parse(JSON.stringify(source));
-  clone.pages.forEach(p=>p.cells.forEach(c=>c.items.forEach(item=>{
-    item.photos=[];
-  })));
-  return clone;
+/* ── INDEXEDDB STORAGE ── */
+const IDB_NAME='futurelog',IDB_STORE_NAME='db',IDB_VERSION=1;
+let _idb=null;
+
+function openIDB(){
+  return new Promise((resolve,reject)=>{
+    if(_idb){resolve(_idb);return;}
+    const req=indexedDB.open(IDB_NAME,IDB_VERSION);
+    req.onupgradeneeded=e=>{e.target.result.createObjectStore(IDB_STORE_NAME);};
+    req.onsuccess=e=>{_idb=e.target.result;resolve(_idb);};
+    req.onerror=e=>{reject(e.target.error);};
+  });
 }
 
-/* Debounce handle — save runs 2 s after the last change, not on every keystroke */
+function idbGet(key){
+  return openIDB().then(idbInst=>new Promise((resolve,reject)=>{
+    const tx=idbInst.transaction(IDB_STORE_NAME,'readonly');
+    const req=tx.objectStore(IDB_STORE_NAME).get(key);
+    req.onsuccess=()=>resolve(req.result??null);
+    req.onerror=e=>reject(e.target.error);
+  }));
+}
+
+function idbSet(key,val){
+  return openIDB().then(idbInst=>new Promise((resolve,reject)=>{
+    const tx=idbInst.transaction(IDB_STORE_NAME,'readwrite');
+    const req=tx.objectStore(IDB_STORE_NAME).put(val,key);
+    req.onsuccess=()=>resolve();
+    req.onerror=e=>reject(e.target.error);
+  }));
+}
+
+/* Debounce handle -- save runs 2 s after the last change, not on every keystroke */
 let _saveTimer=null;
 function save(){
   clearTimeout(_saveTimer);
   _saveTimer=setTimeout(()=>{
-    try{
-      const stripped=dbWithoutPhotos(db);
-      const data=JSON.stringify(stripped);
-      localStorage.setItem(STORE,data);
-      const used=new Blob([data]).size;
-      const limit=5*1024*1024;
-      if(used>limit*0.8)showToast('⚠ Storage '+Math.round(used/1024)+'KB / 5MB — export a backup soon');
-    }catch(e){
-      showToast('⚠ Storage full — export backup now!');
-    }
+    idbSet(STORE,JSON.parse(JSON.stringify(db))).catch(()=>{
+      showToast('⚠ Auto-save failed -- export backup now!');
+    });
   },2000);
 }
-
-/* Restore banner — shown when localStorage data exists but no JSON file loaded this session */
-function maybeShowRestoreBanner(){
-  if(_jsonLoaded)return;
-  if(document.getElementById('restore-banner'))return;
-  const banner=document.createElement('div');
-  banner.id='restore-banner';
-  banner.style.cssText='position:fixed;top:0;left:0;right:0;z-index:500;background:#f5f0e8;border-bottom:.5px solid #c8bfaf;padding:9px 14px;display:flex;align-items:center;justify-content:space-between;gap:10px;font-family:"DM Mono",monospace;font-size:10px;letter-spacing:.04em;color:#5a5550;';
-  banner.innerHTML=`<span style="flex:1">Load your FutureLog file to begin — photos not yet restored</span><div style="display:flex;gap:6px;flex-shrink:0"><button onclick="document.getElementById('load-file-input').click()" style="background:#141210;color:#dedad4;border:none;border-radius:2px;padding:4px 10px;font-family:inherit;font-size:10px;letter-spacing:.06em;cursor:pointer;">Load file</button><button onclick="this.parentNode.parentNode.remove()" style="background:none;border:.5px solid #c8bfaf;border-radius:2px;padding:3px 8px;font-family:inherit;font-size:10px;cursor:pointer;color:#5a5550;">Dismiss</button></div>`;
-  document.body.prepend(banner);
-}
-/* ── LOAD OVERLAY ── */
-function showLoadOverlay(){document.getElementById('load-overlay').classList.add('open');}
+/* showLoadOverlay and restore banner removed: IDB auto-loads on open */
 
 function uid(){return Math.random().toString(36).slice(2)+Date.now().toString(36)}
 function esc(s){return s==null?'':String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
@@ -715,24 +717,25 @@ function hasDetail(item){
   return(item.notes&&item.notes.trim())||(item.subtasks&&item.subtasks.length>0)||(item.resources&&item.resources.length>0);
 }
 
-let _loadedDb=load();
-const isValid=_loadedDb&&_loadedDb.pages&&_loadedDb.pages.length&&_loadedDb.pages[0].cells&&_loadedDb.pages[0].cells.length&&_loadedDb.pages[0].cells[0].monthIdx!=null&&_loadedDb.pages[0].startMonth!=null;
-let db;
-if(!isValid){db={pages:[newPage('',new Date().getMonth())]};save();}
-else{db=_loadedDb;}
-
-/* migrate */
-db.pages.forEach(p=>p.cells.forEach(c=>c.items.forEach(item=>{
-  if(item.notes==null)item.notes='';
-  if(item.subtasks==null)item.subtasks=[];
-  if(item.resources==null)item.resources=[];
-  if(item.photos==null)item.photos=[];
-  if(item.research==null)item.research={notes:'',tasks:[],contacts:[],log:[]};
-  if(!item.detailId&&hasDetail(item))item.detailId=item.id;
-  if(item.researchUrl){item.researchId=item.id;delete item.researchUrl;}
-})));save();
-
+let db=null;
 let curPage=0;
+
+function migrateDb(d){
+  d.pages.forEach(p=>p.cells.forEach(c=>c.items.forEach(item=>{
+    if(item.notes==null)item.notes='';
+    if(item.subtasks==null)item.subtasks=[];
+    if(item.resources==null)item.resources=[];
+    if(item.photos==null)item.photos=[];
+    if(item.research==null)item.research={notes:'',tasks:[],contacts:[],log:[]};
+    if(!item.detailId&&hasDetail(item))item.detailId=item.id;
+    if(item.researchUrl){item.researchId=item.id;delete item.researchUrl;}
+  })));
+  return d;
+}
+
+function isValidDb(d){
+  return d&&d.pages&&d.pages.length&&d.pages[0].cells&&d.pages[0].cells.length&&d.pages[0].cells[0].monthIdx!=null&&d.pages[0].startMonth!=null;
+}
 
 /* ── RENDER ── */
 function render(){renderDots();renderSlider();goTo(curPage,false)}
@@ -1813,8 +1816,16 @@ window.addEventListener('resize',()=>{
 
 function checkHash(){const m=window.location.hash.match(/^#detail\/(\d+)\/(\d+)\/(\d+)$/);if(m){const pi=+m[1],ci=+m[2],ii=+m[3];if(db.pages[pi]?.cells[ci]?.items[ii])openDetail(pi,ci,ii)}}
 
-try{render();checkHash()}catch(e){console.error('Init error:',e)}
-showLoadOverlay();
+/* ── ASYNC STARTUP: load from IndexedDB, fall back to empty db ── */
+idbGet(STORE).then(saved=>{
+  if(isValidDb(saved)){db=migrateDb(saved);}
+  else{db={pages:[newPage('',new Date().getMonth())]};save();}
+  try{render();checkHash();}catch(e){console.error('Init error:',e)}
+}).catch(err=>{
+  console.error('IDB load failed:',err);
+  db={pages:[newPage('',new Date().getMonth())]};save();
+  try{render();checkHash();}catch(e){console.error('Init error:',e)}
+});
 </script>
 </body>
 </html>
