@@ -1551,19 +1551,29 @@ function openActions(){document.getElementById('actions-modal').classList.add('o
 function closeActions(){document.getElementById('actions-modal').classList.remove('open')}
 function exportData(){saveToFile();}
 
-/* Save to file with iterative daily versioning: futurelog-YYYY-MM-DD-v1.json, v2, v3… */
+/* Save to file with iterative daily versioning: futurelog-YYYY-MM-DD-v1.json, v2, v3…
+   Uses Web Share API on mobile (native share sheet -> Save to Files).
+   Falls back to <a download> on desktop. */
 function saveToFile(){
   const today=new Date().toISOString().split('T')[0];
   const cntKey='futurelog_save_cnt_'+today;
   const v=parseInt(localStorage.getItem(cntKey)||'0',10)+1;
   localStorage.setItem(cntKey,v);
   const filename='futurelog-'+today+'-v'+v+'.json';
-  const b=new Blob([JSON.stringify(db,null,2)],{type:'application/json'});
-  const u=URL.createObjectURL(b);const a=document.createElement('a');
-  a.href=u;a.download=filename;a.click();URL.revokeObjectURL(u);
+  const json=JSON.stringify(db,null,2);
+  const b=new Blob([json],{type:'application/json'});
   _jsonLoaded=true;
   save();
-  showToast('Saved — '+filename);
+  if(navigator.share && navigator.canShare && navigator.canShare({files:[new File([b],filename,{type:'application/json'})]})){
+    const file=new File([b],filename,{type:'application/json'});
+    navigator.share({files:[file],title:'FutureLog backup'}).catch(err=>{
+      if(err.name!=='AbortError')showToast('⚠ Share failed');
+    });
+  } else {
+    const u=URL.createObjectURL(b);const a=document.createElement('a');
+    a.href=u;a.download=filename;a.click();URL.revokeObjectURL(u);
+    showToast('Saved — '+filename);
+  }
 }
 
 /* Load file handler — used by both the startup overlay and the restore banner */
