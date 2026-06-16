@@ -665,12 +665,22 @@ function idbSet(key,val){
 /* Debounce handle -- save runs 2 s after the last change, not on every keystroke */
 let _saveTimer=null;
 function save(){
+  if(!db)return;
   clearTimeout(_saveTimer);
   _saveTimer=setTimeout(()=>{
     idbSet(STORE,JSON.parse(JSON.stringify(db))).catch(()=>{
       showToast('⚠ Auto-save failed -- export backup now!');
     });
   },2000);
+}
+
+/* Write to IDB immediately -- used after JSON load to ensure data persists before tab close */
+function saveNow(){
+  if(!db)return Promise.resolve();
+  clearTimeout(_saveTimer);
+  return idbSet(STORE,JSON.parse(JSON.stringify(db))).catch(()=>{
+    showToast('⚠ Auto-save failed -- export backup now!');
+  });
 }
 /* showLoadOverlay and restore banner removed: IDB auto-loads on open */
 
@@ -1575,10 +1585,10 @@ function handleLoadFile(e){
           if(item.researchUrl){item.researchId=item.id;delete item.researchUrl;}
         })));
         _jsonLoaded=true;
-        save();curPage=0;render();
+        curPage=0;render();
+        saveNow().then(()=>showToast('File loaded'));
         document.getElementById('load-overlay').classList.remove('open');
         const banner=document.getElementById('restore-banner');if(banner)banner.remove();
-        showToast('File loaded');
       }else{showToast('Invalid file');}
     }catch{showToast('Load failed');}
     e.target.value='';
