@@ -502,7 +502,7 @@ input.name { font-family: var(--serif); font-size: 18px; }
       var file;
       try { file = new File([blob], base + ".png", { type: "image/png" }); }
       catch (e) { flash(el.share, "Image failed", "Share image"); return; }
-      var data = { files: [file], title: base, text: base };
+      var data = { files: [file] };
       try {
         if (navigator.canShare && navigator.canShare(data)) {
           navigator.share(data).catch(function (err) {
