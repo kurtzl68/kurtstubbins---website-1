@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Leave By</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Crimson+Pro:wght@400;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* Layout idea: one paper sheet on a greige ground. Big LEAVE BY result first, chronological timeline second, inputs last in travel order (arrive at X, then A, B, C). */
+:root {
+  --bg: #dedad4;
+  --sheet: #ffffff;
+  --ink: #141210;
+  --ink2: #2c2a27;
+  --ink3: #4a4742;
+  --muted: #8a8782;
+  --faint: #c8c5c0;
+  --red: #8b2c2c;
+  --mono: "DM Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --serif: "Crimson Pro", Georgia, "Times New Roman", serif;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #161411;
+    --sheet: #1f1d19;
+    --ink: #ede8df;
+    --ink2: #d6d0c6;
+    --ink3: #9a9389;
+    --muted: #6f695f;
+    --faint: #3c3830;
+    --red: #c47a6a;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #161411;
+  --sheet: #1f1d19;
+  --ink: #ede8df;
+  --ink2: #d6d0c6;
+  --ink3: #9a9389;
+  --muted: #6f695f;
+  --faint: #3c3830;
+  --red: #c47a6a;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--serif);
+  font-size: 17px;
+  line-height: 1.35;
+  -webkit-text-size-adjust: 100%;
+}
+.wrap { max-width: 560px; margin: 0 auto; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+.sheet { background: var(--sheet); border: 0.5px solid var(--faint); border-radius: 2px; padding: 16px; }
+.label {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink3);
+}
+.top { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.title { font-family: var(--mono); font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--ink); font-weight: 500; }
+button {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  background: transparent;
+  color: var(--ink);
+  border: 0.5px solid var(--ink3);
+  border-radius: 2px;
+  padding: 9px 12px;
+  min-height: 36px;
+  cursor: pointer;
+}
+button:hover { background: var(--faint); }
+button.solid { background: var(--ink); color: var(--sheet); border-color: var(--ink); }
+button.solid:hover { opacity: 0.85; background: var(--ink); }
+button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
+input {
+  font-family: var(--mono);
+  font-size: 16px;
+  color: var(--ink);
+  background: transparent;
+  border: 0.5px solid var(--ink3);
+  border-radius: 2px;
+  padding: 8px 10px;
+  min-height: 40px;
+  width: 100%;
+}
+input::placeholder { color: var(--muted); }
+input.name { font-family: var(--serif); font-size: 18px; }
+
+/* Result */
+.hero { display: flex; flex-direction: column; gap: 4px; }
+.hero .big { font-family: var(--mono); font-size: 56px; font-weight: 500; line-height: 1; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.hero .sub { font-family: var(--serif); font-size: 18px; color: var(--ink2); }
+.hero .warn { color: var(--red); }
+
+/* Timeline */
+.tl { display: flex; flex-direction: column; margin-top: 10px; }
+.tl-row { display: grid; grid-template-columns: 28px 1fr auto; gap: 10px; align-items: baseline; padding: 10px 0; border-top: 0.5px solid var(--faint); }
+.tl-row:first-child { border-top: 0; }
+.tl-letter { font-family: var(--mono); font-size: 13px; font-weight: 500; }
+.tl-name { font-family: var(--serif); font-size: 18px; color: var(--ink); overflow-wrap: anywhere; }
+.tl-times { font-family: var(--mono); font-size: 13px; color: var(--ink2); text-align: right; font-variant-numeric: tabular-nums; }
+.tl-times b { font-weight: 500; color: var(--ink); }
+.tl-day { display: block; font-size: 10px; letter-spacing: 0.1em; color: var(--ink3); text-transform: uppercase; }
+
+/* Inputs */
+.fields { display: flex; flex-direction: column; gap: 6px; }
+.row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.field { display: flex; flex-direction: column; gap: 6px; }
+.stop { display: flex; flex-direction: column; gap: 10px; padding: 14px 0; border-top: 0.5px solid var(--faint); }
+.stop-head { display: grid; grid-template-columns: 28px 1fr auto; gap: 10px; align-items: center; }
+.stop-letter { font-family: var(--mono); font-size: 13px; font-weight: 500; }
+.rm { padding: 9px 10px; }
+.actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 6px; }
+.note { font-family: var(--serif); font-size: 15px; color: var(--ink3); margin: 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="sheet top">
+    <span class="title">Leave By</span>
+    <button id="theme" type="button" aria-label="Toggle light and dark">Dark</button>
+  </div>
+
+  <div class="sheet hero" id="hero" aria-live="polite"></div>
+
+  <div class="sheet">
+    <div class="label">Timeline</div>
+    <div class="tl" id="timeline"></div>
+    <div class="actions">
+      <button id="copy" type="button">Copy plan</button>
+    </div>
+  </div>
+
+  <div class="sheet">
+    <div class="fields">
+      <div class="label" id="arrlabel">Arrive at D by</div>
+      <input id="arrive" type="datetime-local">
+      <input id="destname" class="name" type="text" placeholder="Destination name (optional)" aria-label="Name of destination" style="margin-top:4px;">
+    </div>
+    <div class="fields" style="margin-top:14px;">
+      <div class="label">Buffer per drive (min)</div>
+      <input id="buffer" type="number" inputmode="numeric" min="0" step="1">
+    </div>
+    <div id="stops" style="margin-top:14px;"></div>
+    <div class="actions">
+      <button id="add" type="button" class="solid">Add stop</button>
+      <button id="reset" type="button">Reset</button>
+    </div>
+    <p class="note" style="margin-top:12px;">Enter your trip in travel order: start at A, go to B, go to C, and the last letter is your destination. Drive times are your own estimates, so keep a buffer.</p>
+  </div>
+
+</div>
+
+<script>
+(function () {
+  var LS_KEY = "leaveby_v2";
+  var LS_THEME = "leaveby_theme";
+  var LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+
+  function pad(n) { return (n < 10 ? "0" : "") + n; }
+  function toLocalInput(d) {
+    return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()) + "T" + pad(d.getHours()) + ":" + pad(d.getMinutes());
+  }
+  // stops are in travel order. drive = minutes from this stop to the NEXT stop (or to X for the last one). stay = minutes spent at this stop (unused for A).
+  function defaultState() {
+    var d = new Date(Date.now() + 3 * 3600 * 1000);
+    d.setMinutes(Math.ceil(d.getMinutes() / 5) * 5, 0, 0);
+    return {
+      arrive: toLocalInput(d),
+      buffer: 5,
+      dest: "",
+      stops: [
+        { name: "", drive: 25, stay: 0 },
+        { name: "", drive: 15, stay: 10 },
+        { name: "", drive: 20, stay: 5 }
+      ]
+    };
+  }
+
+  var state;
+  try {
+    var raw = localStorage.getItem(LS_KEY);
+    state = raw ? JSON.parse(raw) : defaultState();
+    if (!state || !state.stops || !state.stops.length || !state.arrive) { state = defaultState(); }
+    if (typeof state.dest !== "string") { state.dest = ""; }
+  } catch (e) { state = defaultState(); }
+
+  function save() { try { localStorage.setItem(LS_KEY, JSON.stringify(state)); } catch (e) {} }
+  function num(v) { var n = parseFloat(v); return (isFinite(n) && n > 0) ? n : 0; }
+  function esc(s) { return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;"); }
+  function label(i) { return i < 26 ? LETTERS.charAt(i) : String(i + 1); }
+  function nm(i) { return (state.stops[i].name || "").trim(); }
+  function dl() { return label(state.stops.length); }
+  function destTitle() { var n = (state.dest || "").trim(); return dl() + (n ? " (" + n + ")" : ""); }
+  function stopTitle(i) { var n = nm(i); return label(i) + (n ? " (" + n + ")" : ""); }
+
+  function fmtTime(ms) { var d = new Date(ms); return pad(d.getHours()) + ":" + pad(d.getMinutes()); }
+  function fmtDay(ms) {
+    try { return new Date(ms).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" }); }
+    catch (e) { return ""; }
+  }
+  function dayKey(ms) { var d = new Date(ms); return d.getFullYear() + "-" + d.getMonth() + "-" + d.getDate(); }
+  function fmtDur(min) {
+    var m = Math.round(Math.abs(min));
+    var h = Math.floor(m / 60), r = m % 60;
+    if (h > 0) { return h + " h " + r + " min"; }
+    return r + " min";
+  }
+
+  // Backward schedule from X: leave(i) = arrive(next) - drive(i) - buffer; arrive(i) = leave(i) - stay(i) (stay is 0 for A).
+  function compute() {
+    var T = new Date(state.arrive).getTime();
+    if (!isFinite(T)) { return null; }
+    var buf = num(state.buffer);
+    var n = state.stops.length;
+    var res = new Array(n);
+    var next = T;
+    for (var i = n - 1; i >= 0; i--) {
+      var s = state.stops[i];
+      var leave = next - (num(s.drive) + buf) * 60000;
+      var stay = (i === 0) ? 0 : num(s.stay);
+      var arr = leave - stay * 60000;
+      res[i] = { arrive: arr, leave: leave };
+      next = arr;
+    }
+    return { T: T, stops: res };
+  }
+
+  var el = {
+    hero: document.getElementById("hero"),
+    tl: document.getElementById("timeline"),
+    stops: document.getElementById("stops"),
+    arrive: document.getElementById("arrive"),
+    destname: document.getElementById("destname"),
+    buffer: document.getElementById("buffer"),
+    add: document.getElementById("add"),
+    reset: document.getElementById("reset"),
+    copy: document.getElementById("copy"),
+    theme: document.getElementById("theme")
+  };
+
+  function renderOutputs() {
+    var c = compute();
+    var n = state.stops.length;
+    if (!c) {
+      el.hero.innerHTML = '<div class="label">Set an arrival time</div><div class="sub">Pick when you need to arrive at ' + dl() + '.</div>';
+      el.tl.innerHTML = "";
+      return;
+    }
+    var xKey = dayKey(c.T);
+    var lv = c.stops[0].leave;
+    var mins = (lv - Date.now()) / 60000;
+    var cd, cls = "";
+    if (mins >= 0) { cd = "in " + fmtDur(mins); } else { cd = "already " + fmtDur(mins) + " ago"; cls = " warn"; }
+    var day = dayKey(lv) !== dayKey(Date.now()) ? fmtDay(lv) + ", " : "";
+    el.hero.innerHTML =
+      '<div class="label">Leave ' + esc(stopTitle(0)) + ' by</div>' +
+      '<div class="big' + cls + '">' + fmtTime(lv) + '</div>' +
+      '<div class="sub' + cls + '">' + esc(day) + cd + '</div>';
+
+    var rows = "";
+    for (var i = 0; i < n; i++) {
+      var r = c.stops[i];
+      var times;
+      if (i === 0) {
+        times = 'LEAVE <b>' + fmtTime(r.leave) + '</b>';
+      } else {
+        times = 'ARRIVE ' + fmtTime(r.arrive) + '<br>LEAVE <b>' + fmtTime(r.leave) + '</b>';
+      }
+      if (dayKey(r.leave) !== xKey) { times += '<span class="tl-day">' + esc(fmtDay(r.leave)) + '</span>'; }
+      rows += '<div class="tl-row"><span class="tl-letter">' + label(i) + '</span><span class="tl-name">' + (nm(i) ? esc(nm(i)) : '<span style="color:var(--muted)">Stop ' + label(i) + '</span>') + '</span><span class="tl-times">' + times + '</span></div>';
+    }
+    var dn = (state.dest || "").trim();
+    var xt = 'ARRIVE BY <b>' + fmtTime(c.T) + '</b>';
+    if (dayKey(c.T) !== dayKey(Date.now())) { xt += '<span class="tl-day">' + esc(fmtDay(c.T)) + '</span>'; }
+    rows += '<div class="tl-row"><span class="tl-letter">' + dl() + '</span><span class="tl-name">' + (dn ? esc(dn) : '<span style="color:var(--muted)">Destination</span>') + '</span><span class="tl-times">' + xt + '</span></div>';
+    el.tl.innerHTML = rows;
+  }
+
+  function renderInputs() {
+    el.arrive.value = state.arrive;
+    el.destname.value = state.dest || "";
+    el.buffer.value = state.buffer;
+    var n = state.stops.length;
+    var html = "";
+    for (var i = 0; i < n; i++) {
+      var s = state.stops[i];
+      var L = label(i);
+      var NEXT = label(i + 1);
+      html += '<div class="stop" data-i="' + i + '">';
+      html += '<div class="stop-head"><span class="stop-letter">' + L + '</span>';
+      html += '<input class="name" type="text" data-f="name" id="name' + i + '" placeholder="' + (i === 0 ? "Start A name (optional)" : "Name (optional)") + '" value="' + esc(s.name || "") + '" aria-label="Name of stop ' + L + '">';
+      html += (n > 1) ? '<button class="rm" type="button" data-rm="' + i + '" aria-label="Remove stop ' + L + '">Remove</button>' : '<span></span>';
+      html += '</div>';
+      html += '<div class="row2">';
+      if (i === 0) {
+        html += '<div class="field"><span class="label">Starting point</span><span class="note" style="padding-top:8px;">You leave from here.</span></div>';
+      } else {
+        html += '<div class="field"><span class="label">Time at ' + L + ' (min)</span><input type="number" inputmode="numeric" min="0" step="1" data-f="stay" id="stay' + i + '" value="' + esc(s.stay) + '"></div>';
+      }
+      html += '<div class="field"><span class="label">Drive ' + L + ' to ' + NEXT + ' (min)</span><input type="number" inputmode="numeric" min="0" step="1" data-f="drive" id="drive' + i + '" value="' + esc(s.drive) + '"></div>';
+      html += '</div>';
+      html += '</div>';
+    }
+    // Final cell: destination X. Name mirrors the field at the top. No time or drive cells.
+    document.getElementById("arrlabel").textContent = "Arrive at " + dl() + " by";
+    html += '<div class="stop" data-x="1"><div class="stop-head"><span class="stop-letter">' + dl() + '</span>';
+    html += '<input class="name" type="text" id="xname" placeholder="Destination ' + dl() + ' name (optional)" value="' + esc(state.dest || "") + '" aria-label="Name of destination ' + dl() + '">';
+    html += '<span></span></div></div>';
+    el.stops.innerHTML = html;
+  }
+
+  el.stops.addEventListener("input", function (e) {
+    var t = e.target;
+    if (t.id === "xname") {
+      state.dest = t.value;
+      el.destname.value = t.value;
+      save();
+      renderOutputs();
+      return;
+    }
+    var row = t.closest(".stop");
+    if (!row || !t.dataset.f) { return; }
+    var i = parseInt(row.getAttribute("data-i"), 10);
+    state.stops[i][t.dataset.f] = t.value;
+    save();
+    renderOutputs();
+  });
+  el.stops.addEventListener("click", function (e) {
+    var b = e.target.closest("[data-rm]");
+    if (!b) { return; }
+    var i = parseInt(b.getAttribute("data-rm"), 10);
+    if (state.stops.length > 1) { state.stops.splice(i, 1); save(); renderInputs(); renderOutputs(); }
+  });
+  el.arrive.addEventListener("input", function () { state.arrive = el.arrive.value; save(); renderOutputs(); });
+  el.destname.addEventListener("input", function () {
+    state.dest = el.destname.value;
+    var xn = document.getElementById("xname");
+    if (xn) { xn.value = state.dest; }
+    save(); renderOutputs();
+  });
+  el.buffer.addEventListener("input", function () { state.buffer = el.buffer.value; save(); renderOutputs(); });
+  el.add.addEventListener("click", function () {
+    state.stops.push({ name: "", drive: 15, stay: 5 });
+    save(); renderInputs(); renderOutputs();
+    var last = document.getElementById("stay" + (state.stops.length - 1));
+    if (last) { last.focus(); }
+  });
+  el.reset.addEventListener("click", function () {
+    if (el.reset.dataset.armed === "1") {
+      state = defaultState(); save(); renderInputs(); renderOutputs();
+      el.reset.textContent = "Reset"; el.reset.dataset.armed = "0";
+    } else {
+      el.reset.textContent = "Tap again to confirm"; el.reset.dataset.armed = "1";
+      setTimeout(function () { el.reset.textContent = "Reset"; el.reset.dataset.armed = "0"; }, 3000);
+    }
+  });
+
+  el.copy.addEventListener("click", function () {
+    var c = compute();
+    if (!c) { return; }
+    var n = state.stops.length;
+    var lines = [];
+    for (var i = 0; i < n; i++) {
+      var t = stopTitle(i);
+      if (i === 0) { lines.push(t + ": leave " + fmtTime(c.stops[i].leave) + " (" + fmtDay(c.stops[i].leave) + ")"); }
+      else { lines.push(t + ": arrive " + fmtTime(c.stops[i].arrive) + ", leave " + fmtTime(c.stops[i].leave)); }
+    }
+    lines.push(destTitle() + ": arrive by " + fmtTime(c.T) + " (" + fmtDay(c.T) + ")");
+    var text = lines.join("\n");
+    var done = function (ok) {
+      el.copy.textContent = ok ? "Copied" : "Copy blocked";
+      setTimeout(function () { el.copy.textContent = "Copy plan"; }, 1800);
+    };
+    try { navigator.clipboard.writeText(text).then(function () { done(true); }, function () { done(false); }); }
+    catch (e) { done(false); }
+  });
+
+  // Theme
+  function applyTheme(t) {
+    document.documentElement.setAttribute("data-theme", t);
+    el.theme.textContent = (t === "dark") ? "Light" : "Dark";
+  }
+  var theme = null;
+  try { theme = localStorage.getItem(LS_THEME); } catch (e) {}
+  if (theme !== "dark" && theme !== "light") {
+    theme = (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) ? "dark" : "light";
+  }
+  applyTheme(theme);
+  el.theme.addEventListener("click", function () {
+    theme = (theme === "dark") ? "light" : "dark";
+    applyTheme(theme);
+    try { localStorage.setItem(LS_THEME, theme); } catch (e) {}
+  });
+
+  renderInputs();
+  renderOutputs();
+  setInterval(renderOutputs, 30000);
+})();
+</script>
+</body>
+</html>
