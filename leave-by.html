@@ -140,6 +140,7 @@ input.name { font-family: var(--serif); font-size: 18px; }
     <div class="label">Timeline</div>
     <div class="tl" id="timeline"></div>
     <div class="actions">
+      <button id="share" type="button" class="solid">Share image</button>
       <button id="copy" type="button">Copy plan</button>
     </div>
   </div>
@@ -249,6 +250,7 @@ input.name { font-family: var(--serif); font-size: 18px; }
     add: document.getElementById("add"),
     reset: document.getElementById("reset"),
     copy: document.getElementById("copy"),
+    share: document.getElementById("share"),
     theme: document.getElementById("theme")
   };
 
@@ -388,6 +390,131 @@ input.name { font-family: var(--serif); font-size: 18px; }
     try { navigator.clipboard.writeText(text).then(function () { done(true); }, function () { done(false); }); }
     catch (e) { done(false); }
   });
+
+  // ---- Timeline image for sharing (always light: white sheet, black ink) ----
+  function timelineModel() {
+    var c = compute();
+    if (!c) { return null; }
+    var n = state.stops.length;
+    var xKey = dayKey(c.T);
+    var rows = [];
+    for (var i = 0; i < n; i++) {
+      var r = c.stops[i];
+      var lines = [];
+      if (i > 0) { lines.push(["ARRIVE ", fmtTime(r.arrive), false]); }
+      lines.push(["LEAVE ", fmtTime(r.leave), true]);
+      rows.push({ letter: label(i), name: nm(i), ph: "Stop " + label(i), lines: lines, day: dayKey(r.leave) !== xKey ? fmtDay(r.leave) : "" });
+    }
+    var dn = (state.dest || "").trim();
+    rows.push({ letter: dl(), name: dn, ph: "Destination", lines: [["ARRIVE BY ", fmtTime(c.T), true]], day: dayKey(c.T) !== dayKey(Date.now()) ? fmtDay(c.T) : "" });
+    return { rows: rows, title: dn || "Leave By", sub: fmtDay(c.T) };
+  }
+
+  function fit(ctx, text, maxW) {
+    if (ctx.measureText(text).width <= maxW) { return text; }
+    var t = text;
+    while (t.length > 1 && ctx.measureText(t + "...").width > maxW) { t = t.slice(0, -1); }
+    return t + "...";
+  }
+
+  function drawTimeline(m) {
+    var W = 390, S = 3, PAD = 20, HEAD = 70;
+    var INK = "#141210", INK2 = "#2c2a27", INK3 = "#4a4742", MUTED = "#8a8782", FAINT = "#c8c5c0";
+    var MONO = '"DM Mono", ui-monospace, Menlo, Consolas, monospace';
+    var SERIF = '"Crimson Pro", Georgia, "Times New Roman", serif';
+    var h = HEAD + 14, i;
+    for (i = 0; i < m.rows.length; i++) {
+      h += (m.rows[i].lines.length > 1 ? 66 : 46) + (m.rows[i].day ? 14 : 0);
+    }
+    var cv = document.createElement("canvas");
+    cv.width = W * S;
+    cv.height = h * S;
+    var x = cv.getContext("2d");
+    x.scale(S, S);
+    x.fillStyle = "#ffffff";
+    x.fillRect(0, 0, W, h);
+    x.textBaseline = "alphabetic";
+    x.textAlign = "left";
+    x.fillStyle = INK;
+    x.font = "600 24px " + SERIF;
+    x.fillText(fit(x, m.title, W - 2 * PAD), PAD, 40);
+    x.fillStyle = INK3;
+    x.font = "400 10px " + MONO;
+    x.fillText(("TIMELINE - " + m.sub).toUpperCase(), PAD, 58);
+    var y = HEAD;
+    for (i = 0; i < m.rows.length; i++) {
+      var r = m.rows[i];
+      var rh = (r.lines.length > 1 ? 66 : 46) + (r.day ? 14 : 0);
+      if (i > 0) {
+        x.strokeStyle = FAINT;
+        x.lineWidth = 0.5;
+        x.beginPath();
+        x.moveTo(PAD, y + 0.25);
+        x.lineTo(W - PAD, y + 0.25);
+        x.stroke();
+      }
+      x.textAlign = "left";
+      x.fillStyle = INK;
+      x.font = "500 13px " + MONO;
+      x.fillText(r.letter, PAD, y + 28);
+      x.font = "400 18px " + SERIF;
+      x.fillStyle = r.name ? INK : MUTED;
+      x.fillText(fit(x, r.name || r.ph, 170), PAD + 38, y + 28);
+      x.textAlign = "right";
+      var ly = y + 28;
+      for (var k = 0; k < r.lines.length; k++) {
+        var ln = r.lines[k];
+        x.font = (ln[2] ? "500" : "400") + " 13px " + MONO;
+        var tw = x.measureText(ln[1]).width;
+        x.fillStyle = ln[2] ? INK : INK2;
+        x.fillText(ln[1], W - PAD, ly);
+        x.font = "400 13px " + MONO;
+        x.fillStyle = INK2;
+        x.fillText(ln[0], W - PAD - tw, ly);
+        ly += 22;
+      }
+      if (r.day) {
+        x.font = "400 10px " + MONO;
+        x.fillStyle = INK3;
+        x.fillText(r.day.toUpperCase(), W - PAD, ly - 6);
+      }
+      y += rh;
+    }
+    return cv;
+  }
+
+  function flash(btn, txt, base) {
+    btn.textContent = txt;
+    setTimeout(function () { btn.textContent = base; }, 2400);
+  }
+  function safeName(s) {
+    var t = (s || "").replace(/[\\\/:*?"<>|%]/g, "-").replace(/\s+/g, " ").trim();
+    return t || "Leave By";
+  }
+
+  // Draw first, then share inside the same tap so iOS allows the Share sheet.
+  el.share.addEventListener("click", function () {
+    var m = timelineModel();
+    if (!m) { flash(el.share, "Set arrival time", "Share image"); return; }
+    var base = safeName(state.dest);
+    drawTimeline(m).toBlob(function (blob) {
+      if (!blob) { flash(el.share, "Image failed", "Share image"); return; }
+      var file;
+      try { file = new File([blob], base + ".png", { type: "image/png" }); }
+      catch (e) { flash(el.share, "Image failed", "Share image"); return; }
+      var data = { files: [file], title: base, text: base };
+      try {
+        if (navigator.canShare && navigator.canShare(data)) {
+          navigator.share(data).catch(function (err) {
+            if (!err || err.name !== "AbortError") { flash(el.share, "Share blocked", "Share image"); }
+          });
+        } else {
+          flash(el.share, "Sharing not supported here", "Share image");
+        }
+      } catch (e2) { flash(el.share, "Share blocked", "Share image"); }
+    }, "image/png");
+  });
+  try { if (document.fonts && document.fonts.load) { document.fonts.load('500 13px "DM Mono"'); document.fonts.load('400 13px "DM Mono"'); document.fonts.load('600 24px "Crimson Pro"'); document.fonts.load('400 18px "Crimson Pro"'); } } catch (e3) {}
 
   // Theme
   function applyTheme(t) {
