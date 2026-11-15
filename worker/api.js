@@ -1,8 +1,9 @@
-// Sync API for FutureLog and BoxScout (Cloudflare Pages Function).
+// Sync API for FutureLog and BoxScout (Cloudflare Worker, called from worker/index.js).
 // Storage: one R2 bucket bound as APPDATA.
 // Auth: Cloudflare Access JWT is verified here, so the pages.dev address cannot bypass the login.
-// Env vars: ACCESS_TEAM_DOMAIN (e.g. yourteam.cloudflareaccess.com), ACCESS_AUD (Access app AUD tag).
-// ALLOW_NO_AUTH=1 disables the check (Preview environment only, test bucket only).
+// Env vars: ACCESS_TEAM_DOMAIN (e.g. yourteam.cloudflareaccess.com), ACCESS_AUD (Access app AUD tag;
+// several tags may be listed separated by commas).
+// ALLOW_NO_AUTH=1 disables the check (local testing only; never set it in production).
 
 const APPS = ['futurelog', 'boxscout'];
 const ID_RE = /^[A-Za-z0-9_-]{1,40}$/;
@@ -58,7 +59,8 @@ async function authorized(request, env) {
     const now = Math.floor(Date.now() / 1000);
     if (!payload.exp || payload.exp < now) return false;
     const aud = Array.isArray(payload.aud) ? payload.aud : [payload.aud];
-    if (aud.indexOf(env.ACCESS_AUD) < 0) return false;
+    const want = String(env.ACCESS_AUD).split(',').map(function (x) { return x.trim(); });
+    if (!aud.some(function (a) { return want.indexOf(a) >= 0; })) return false;
     if (payload.iss !== 'https://' + env.ACCESS_TEAM_DOMAIN) return false;
     return true;
   } catch (e) {
@@ -101,9 +103,7 @@ async function purgeOldTrash(bucket, app, items) {
   return keep;
 }
 
-export async function onRequest(context) {
-  const request = context.request;
-  const env = context.env;
+export async function handleApi(request, env) {
   const bucket = env.APPDATA;
   if (!bucket) return json({ error: 'storage not bound' }, 503);
 

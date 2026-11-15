@@ -1,0 +1,19 @@
+{
+  "name": "kurtstubbins---website-1",
+  "main": "worker/index.js",
+  "compatibility_date": "2026-06-16",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": { "enabled": true },
+  "assets": {
+    "directory": ".",
+    "binding": "ASSETS",
+    "run_worker_first": ["/api/*"]
+  },
+  "r2_buckets": [
+    { "binding": "APPDATA", "bucket_name": "kurt-appdata" }
+  ],
+  "vars": {
+    "ACCESS_TEAM_DOMAIN": "curly-voice-ad4c.cloudflareaccess.com",
+    "ACCESS_AUD": "a8b86c0852f972d59ce3a5fea105337f81c00cffcd8f3221e842508766617a50"
+  }
+}
