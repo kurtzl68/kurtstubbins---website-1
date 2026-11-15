@@ -7,6 +7,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Future Log">
 <title>Future Log</title>
+<script src="sync.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,300;0,400;0,500;1,300;1,400&family=Crimson+Pro:ital,wght@0,300;0,400;1,300;1,400&display=swap" rel="stylesheet">
 <style>
@@ -64,6 +65,9 @@ body {
   color:var(--ink3);cursor:pointer;transition:all .12s;
 }
 .tb-btn:active { background:var(--rule); }
+.sync-lbl { font-family:'DM Mono',monospace;font-size:8px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-right:4px;white-space:nowrap;cursor:default; }
+.sync-lbl[data-state="signin"],.sync-lbl[data-state="conflict"],.sync-lbl[data-state="error"],.sync-lbl[data-state="offline"] { color:var(--red);cursor:pointer; }
+@media (max-width:520px){ .sync-lbl { font-size:7px;letter-spacing:.05em;max-width:92px;white-space:normal;line-height:1.15;text-align:right; } }
 .tb-btn.ink { background:var(--ink);color:var(--bg);border-color:var(--ink); }
 .tb-btn.ink:active { opacity:.85; }
 .dark-btn {
@@ -486,6 +490,7 @@ mark { background:rgba(139,44,44,.12);color:var(--red);border-radius:2px;padding
   <div id="topbar">
     <a class="wordmark" href="index.html">Future Log</a>
     <div class="tb-r">
+      <span class="sync-lbl" id="sync-lbl"></span>
       <button class="tb-btn" onclick="openSearch()">Search</button>
       <button class="tb-btn" id="layout-btn" onclick="toggleLayout()">1 Col</button>
       <button class="tb-btn" onclick="window.print()">Print</button>
@@ -664,8 +669,9 @@ function idbSet(key,val){
 
 /* Debounce handle -- save runs 2 s after the last change, not on every keystroke */
 let _saveTimer=null;
-function save(){
+function save(noSync){
   if(!db)return;
+  if(noSync!==true&&window.AppSync)AppSync.touch('main');
   clearTimeout(_saveTimer);
   _saveTimer=setTimeout(()=>{
     idbSet(STORE,JSON.parse(JSON.stringify(db))).catch(()=>{
@@ -677,6 +683,7 @@ function save(){
 /* Write to IDB immediately -- used after JSON load to ensure data persists before tab close */
 function saveNow(){
   if(!db)return Promise.resolve();
+  if(window.AppSync)AppSync.touch('main');
   clearTimeout(_saveTimer);
   return idbSet(STORE,JSON.parse(JSON.stringify(db))).catch(()=>{
     showToast('⚠ Auto-save failed -- export backup now!');
@@ -1836,15 +1843,47 @@ window.addEventListener('resize',()=>{
 
 function checkHash(){const m=window.location.hash.match(/^#detail\/(\d+)\/(\d+)\/(\d+)$/);if(m){const pi=+m[1],ci=+m[2],ii=+m[3];if(db.pages[pi]?.cells[ci]?.items[ii])openDetail(pi,ci,ii)}}
 
+/* ── SYNC (see sync.js) ── */
+function isEmptyDb(d){
+  if(!d||!d.pages)return true;
+  if(d.pages.length>1)return false;
+  return d.pages.every(p=>p.cells.every(c=>c.items.every(i=>!(i.text&&i.text.trim())&&!hasDetail(i)&&!(i.photos&&i.photos.length))));
+}
+function startSync(){
+  if(!window.AppSync)return;
+  AppSync.init({
+    app:'futurelog',
+    label:document.getElementById('sync-lbl'),
+    current:()=>'main',
+    getDoc:()=>db,
+    getName:()=>'FutureLog',
+    hasData:()=>!isEmptyDb(db),
+    onRemote:(id,doc,name,ver)=>{
+      if(!isValidDb(doc))return;
+      db=migrateDb(doc);
+      if(curPage>=db.pages.length)curPage=0;
+      return saveNow0().then(()=>{try{render();checkHash();}catch(e){console.error(e)}});
+    }
+  });
+  AppSync.start('main');
+}
+/* write to IDB without flagging a change for upload (used when applying server data) */
+function saveNow0(){
+  clearTimeout(_saveTimer);
+  return idbSet(STORE,JSON.parse(JSON.stringify(db))).catch(()=>{});
+}
+
 /* ── ASYNC STARTUP: load from IndexedDB, fall back to empty db ── */
 idbGet(STORE).then(saved=>{
   if(isValidDb(saved)){db=migrateDb(saved);}
-  else{db={pages:[newPage('',new Date().getMonth())]};save();}
+  else{db={pages:[newPage('',new Date().getMonth())]};save(true);}
   try{render();checkHash();}catch(e){console.error('Init error:',e)}
+  startSync();
 }).catch(err=>{
   console.error('IDB load failed:',err);
-  db={pages:[newPage('',new Date().getMonth())]};save();
+  db={pages:[newPage('',new Date().getMonth())]};save(true);
   try{render();checkHash();}catch(e){console.error('Init error:',e)}
+  startSync();
 });
 </script>
 </body>

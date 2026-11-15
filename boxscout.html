@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<script src="sync.js"></script>
 <title>BoxScout — Moving Tracker</title>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
@@ -318,6 +319,28 @@ select.sel:focus{border-color:var(--ink)}
 #lb-close{position:absolute;top:16px;right:20px;background:rgba(255,255,255,.15);color:#fff;
   border:none;width:36px;height:36px;font-size:20px;cursor:pointer;
   display:flex;align-items:center;justify-content:center}
+
+
+/* PROJECTS + SYNC LABEL */
+.proj-bar{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:6px 20px;
+  background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0}
+.proj-btn{background:transparent;border:1px solid var(--border2);border-radius:0;padding:5px 10px;
+  font-family:Arial,Helvetica,sans-serif;font-size:10px;font-weight:700;letter-spacing:1.5px;
+  text-transform:uppercase;color:var(--ink);cursor:pointer;max-width:62%;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+.proj-btn:hover{background:var(--card)}
+.sync-lbl{font-family:Arial,Helvetica,sans-serif;font-size:9px;letter-spacing:1.5px;text-transform:uppercase;
+  color:var(--ink3);text-align:right}
+.sync-lbl[data-state="signin"],.sync-lbl[data-state="conflict"],.sync-lbl[data-state="error"],
+.sync-lbl[data-state="offline"]{color:var(--red);cursor:pointer}
+.proj-row{display:flex;gap:6px;align-items:stretch;margin-bottom:8px}
+.proj-row .modal-opt{flex:1;min-width:0}
+.proj-row.cur .modal-opt{border-color:var(--ink)}
+.proj-row .btn{align-self:stretch}
+.proj-sub{font-family:Arial,Helvetica,sans-serif;font-size:10px;font-weight:700;letter-spacing:1.5px;
+  text-transform:uppercase;color:var(--ink3);margin:14px 0 8px}
+.modal-scroll{max-height:62vh;overflow-y:auto}
+@media print{.proj-bar{display:none!important}}
 
 /* MODALS */
 .overlay{display:none;position:fixed;inset:0;z-index:100;
@@ -635,6 +658,11 @@ select.sel:focus{border-color:var(--ink)}
   </div>
 </header>
 
+<div class="proj-bar">
+  <button class="proj-btn" id="projBtn" onclick="showProjects()">Project &#9662;</button>
+  <span class="sync-lbl" id="sync-lbl"></span>
+</div>
+
 <div class="banner" id="banner"></div>
 
 <div class="left-backdrop" id="leftBackdrop" onclick="toggleLeftPanel()"></div>
@@ -721,6 +749,25 @@ select.sel:focus{border-color:var(--ink)}
 </div>
 
 <!-- Export Modal -->
+<div class="overlay" id="projModal">
+  <div class="modal">
+    <h2>Projects</h2>
+    <p id="projNote">Each project is its own set of boxes. Changes save automatically and appear on all your devices.</p>
+    <div class="modal-scroll">
+      <div id="projList"></div>
+      <div class="proj-sub" id="trashHdr" style="display:none">Trash (kept 30 days)</div>
+      <div id="trashList"></div>
+    </div>
+    <div class="modal-opts" style="margin-top:12px">
+      <button class="modal-opt" onclick="newProject()"><strong>+ New project</strong><span>Starts empty</span></button>
+      <button class="modal-opt" onclick="document.getElementById('projImportFile').click()"><strong>Import a .json backup as a new project</strong><span>Pick a BoxScout backup file from Drive, Files or Downloads</span></button>
+      <button class="modal-opt" id="recoverBtn" style="display:none" onclick="recoverOld()"><strong>Recover old autosave from this device</strong><span>Data saved here by the previous version of BoxScout</span></button>
+    </div>
+    <button class="modal-cancel" onclick="closeModal('projModal')">Close</button>
+  </div>
+</div>
+<input type="file" id="projImportFile" accept=".json" style="display:none" onchange="importAsProject(event)">
+
 <div class="overlay" id="exportModal">
   <div class="modal">
     <h2>&#128190; Save Your Data</h2>
@@ -1429,6 +1476,7 @@ function doImport(e){
       render();
       showBanner('&#10003; Loaded '+boxes.length+' boxes and '+(customCats.length)+' custom categories.', 'success');
       rebuildDataLists();
+      if(window.projectChanged) projectChanged();
     } catch(err){
       showBanner('&#9888; Could not read file &#8212; make sure it is a BoxScout .json backup.', 'warn', 5000);
     }
@@ -1681,54 +1729,246 @@ render = function(){
 };
 renderLeftPanel();
 
-// ── PERSISTENT STORAGE (iOS Session Persistence) ────────────────────
-// Auto-save to localStorage whenever data changes
+// ── PROJECTS + SYNC (see sync.js) ───────────────────────────────────
+var SYNC_ON = location.protocol !== 'file:';
+var PROJ = {cur:null};
+var _localTimer = null;
+
+function pKey(id){ return 'boxscout:' + id; }
+function newId(){ return 'p' + Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
+function docOf(){ return {v:3, boxes:boxes, nextId:nextId, customCats:customCats}; }
+function applyDoc(d){
+  boxes = (d && d.boxes) ? d.boxes : [];
+  customCats = (d && d.customCats) ? d.customCats : [];
+  nextId = (d && d.nextId) ? d.nextId : (boxes.length + 1);
+  openIds = {}; dirty = false; _selectedId = null;
+  updateCatFilters(); render(); rebuildDataLists();
+}
+function projName(id){
+  var l = AppSync.cachedList(), n = id;
+  l.forEach(function(p){ if(p.id === id) n = p.name; });
+  return n;
+}
+function showProjName(){
+  document.getElementById('projBtn').innerHTML = esc(PROJ.cur ? projName(PROJ.cur) : 'Project') + ' &#9662;';
+}
+function saveLocalNow(){
+  clearTimeout(_localTimer);
+  if(!PROJ.cur) return Promise.resolve();
+  return AppSync.local.set(pKey(PROJ.cur), docOf()).catch(function(){
+    showBanner('&#9888; Could not save on this device. Export a backup.', 'warn', 6000);
+  });
+}
+function projectChanged(){
+  if(!PROJ.cur) return;
+  clearTimeout(_localTimer);
+  _localTimer = setTimeout(saveLocalNow, 2000);
+  if(SYNC_ON) AppSync.touch(PROJ.cur);
+}
 var _origMarkDirty = markDirty;
 markDirty = function(){
-  _origMarkDirty();
-  autoSaveToLocalStorage();
+  dirty = true;
+  if(!SYNC_ON) document.getElementById('saveBar').classList.add('show');
+  projectChanged();
 };
+document.addEventListener('visibilitychange', function(){
+  if(document.visibilityState === 'hidden') saveLocalNow();
+});
 
-var _autoSaveTimer = null;
-function autoSaveToLocalStorage(){
-  // Debounce: wait 2s after last change before writing to localStorage.
-  // This prevents JSON.stringify of large photo data on every keystroke.
-  clearTimeout(_autoSaveTimer);
-  _autoSaveTimer = setTimeout(function(){
-    try {
-      var dataToSave = {boxes:boxes, customCats:customCats, nextId:nextId};
-      localStorage.setItem('boxscout_autosave', JSON.stringify(dataToSave));
-    } catch(e) {}
-  }, 2000);
-}
-
-function restoreFromLocalStorage(){
-  try {
-    var saved = localStorage.getItem('boxscout_autosave');
-    if(saved){
-      var data = JSON.parse(saved);
-      if(data.boxes && Array.isArray(data.boxes)){
-        boxes = data.boxes;
-        customCats = data.customCats || [];
-        nextId = data.nextId || (boxes.length + 1);
-        dirty = false;
-        console.log('[Persistence] Restored '+boxes.length+' boxes from previous session');
-        return true;
-      }
+function syncInit(){
+  AppSync.init({
+    app: 'boxscout',
+    label: document.getElementById('sync-lbl'),
+    current: function(){ return PROJ.cur; },
+    getName: projName,
+    getDoc: function(id){ return id === PROJ.cur ? docOf() : AppSync.local.get(pKey(id)); },
+    hasData: function(id){ return id === PROJ.cur && boxes.length > 0; },
+    onRemote: function(id, doc, name, ver){
+      if(id === PROJ.cur){ applyDoc(doc); }
+      return AppSync.local.set(pKey(id), doc).then(function(){ AppSync.list().then(showProjName); });
+    },
+    onTrashed: function(id){
+      if(id === PROJ.cur){ showBanner('This project was moved to the trash on another device.', 'warn', 6000); openFirstOrNew(id); }
     }
-  } catch(e) {
-    console.warn('[Persistence] Could not restore:', e);
-  }
-  return false;
+  });
 }
 
-// Try to restore on page load
-if(restoreFromLocalStorage()){
-  showBanner('&#128190; Session restored! You have '+boxes.length+' box'+(boxes.length!==1?'es':'')+'.', 'info', 4000);
-  updateCatFilters();
-  render();
-  rebuildDataLists();
+async function openProject(id){
+  closeModal('projModal');
+  if(id === PROJ.cur) return;
+  await saveLocalNow();
+  if(SYNC_ON && PROJ.cur) await AppSync.flushNow(PROJ.cur);
+  PROJ.cur = id;
+  try{ localStorage.setItem('boxscout_current', id); }catch(e){}
+  showProjName();
+  var d = await AppSync.local.get(pKey(id));
+  applyDoc(d || {boxes:[]});
+  if(SYNC_ON) AppSync.start(id);
 }
+
+async function createProject(name, doc){
+  var id = newId();
+  AppSync.addLocal(id, name);
+  await AppSync.local.set(pKey(id), doc || {v:3, boxes:[], nextId:1, customCats:[]});
+  await saveLocalNow();
+  PROJ.cur = null;
+  await openProject(id);
+  if(SYNC_ON) AppSync.touch(id);
+  return id;
+}
+
+async function openFirstOrNew(skipId){
+  var l = AppSync.cachedList().filter(function(p){ return !p.trashed && p.id !== skipId; });
+  PROJ.cur = null;
+  if(l.length) await openProject(l[0].id); else await createProject('My boxes');
+}
+
+function newProject(){
+  var n = window.prompt('Name for the new project:', '');
+  if(n == null || !n.trim()) return;
+  closeModal('projModal');
+  createProject(n.trim().slice(0, 60));
+}
+function renameProject(id){
+  var n = window.prompt('New name:', projName(id));
+  if(n == null || !n.trim()) return;
+  AppSync.rename(id, n.trim().slice(0, 60)).then(function(){ showProjName(); renderProjList(); });
+  showProjName(); renderProjList();
+}
+async function duplicateProject(id){
+  var n = window.prompt('Name for the copy:', projName(id) + ' copy');
+  if(n == null || !n.trim()) return;
+  await saveLocalNow();
+  var src = (id === PROJ.cur) ? docOf() : await AppSync.local.get(pKey(id));
+  closeModal('projModal');
+  await createProject(n.trim().slice(0, 60), JSON.parse(JSON.stringify(src || {boxes:[]})));
+}
+async function deleteProject(id){
+  if(!window.confirm('Move "' + projName(id) + '" to the trash?\nIt stays in the trash for 30 days and can be restored.')) return;
+  await AppSync.trash(id);
+  if(id === PROJ.cur){ closeModal('projModal'); await openFirstOrNew(id); }
+  renderProjList();
+}
+function restoreProject(id){
+  AppSync.restore(id).then(renderProjList);
+  renderProjList();
+}
+
+function normBoxes(d){
+  var bx = d.boxes.map(function(b){
+    if(b.status) b.status = String(b.status).toLowerCase();
+    if(b.photos && b.photos.length){
+      b.photos = b.photos.map(function(p){
+        var raw = p.d || p.data || '';
+        var name = p.n || p.name || '';
+        if(raw && raw.indexOf('data:') !== 0){
+          var ext = name.split('.').pop().toLowerCase();
+          var mime = {jpg:'jpeg',jpeg:'jpeg',png:'png',gif:'gif',bmp:'bmp',webp:'webp'}[ext] || 'jpeg';
+          raw = 'data:image/' + mime + ';base64,' + raw;
+        }
+        return {n:name, d:raw};
+      });
+    }
+    if(b.priority !== undefined) b.priority = String(b.priority);
+    return b;
+  });
+  return {v:3, boxes:bx, nextId:d.nextId || (bx.length + 1), customCats:d.customCats || []};
+}
+function importAsProject(e){
+  var file = e.target.files[0];
+  if(!file) return;
+  var reader = new FileReader();
+  reader.onload = function(ev){
+    try{
+      var d = JSON.parse(ev.target.result);
+      if(!d.boxes) throw new Error('bad format');
+      var def = file.name.replace(/\.json$/i, '').replace(/[_-]+/g, ' ').trim() || 'Imported';
+      var n = window.prompt('Name for this project (' + d.boxes.length + ' boxes):', def);
+      if(n == null || !n.trim()) return;
+      closeModal('projModal');
+      createProject(n.trim().slice(0, 60), normBoxes(d)).then(function(){
+        showBanner('&#10003; Imported ' + d.boxes.length + ' boxes into "' + esc(n.trim()) + '".', 'success');
+      });
+    }catch(err){
+      showBanner('&#9888; Could not read file - make sure it is a BoxScout .json backup.', 'warn', 5000);
+    }
+    e.target.value = '';
+  };
+  reader.readAsText(file);
+}
+
+function oldAutosave(){
+  try{
+    var raw = localStorage.getItem('boxscout_autosave');
+    if(!raw) return null;
+    var d = JSON.parse(raw);
+    return (d && Array.isArray(d.boxes) && d.boxes.length) ? d : null;
+  }catch(e){ return null; }
+}
+function recoverOld(){
+  var d = oldAutosave();
+  if(!d) return;
+  var n = window.prompt('Name for the recovered project (' + d.boxes.length + ' boxes):', 'Recovered from this device');
+  if(n == null || !n.trim()) return;
+  closeModal('projModal');
+  createProject(n.trim().slice(0, 60), {v:3, boxes:d.boxes, nextId:d.nextId || (d.boxes.length + 1), customCats:d.customCats || []}).then(function(){
+    try{ localStorage.setItem('boxscout_recovered', '1'); }catch(e){}
+  });
+}
+
+function renderProjList(){
+  var l = AppSync.cachedList();
+  var live = l.filter(function(p){ return !p.trashed; });
+  var gone = l.filter(function(p){ return p.trashed; });
+  var h = '';
+  live.forEach(function(p){
+    var cur = p.id === PROJ.cur;
+    h += '<div class="proj-row' + (cur ? ' cur' : '') + '">'
+      + '<button class="modal-opt" onclick="openProject(\'' + p.id + '\')"><strong>' + esc(p.name) + '</strong><span>' + (cur ? 'Open now' : 'Tap to open') + '</span></button>'
+      + '<button class="btn btn-purple btn-sm" onclick="renameProject(\'' + p.id + '\')">Rename</button>'
+      + '<button class="btn btn-purple btn-sm" onclick="duplicateProject(\'' + p.id + '\')">Copy</button>'
+      + '<button class="btn btn-danger btn-sm" onclick="deleteProject(\'' + p.id + '\')">Delete</button>'
+      + '</div>';
+  });
+  document.getElementById('projList').innerHTML = h || '<p>No projects yet.</p>';
+  var t = '';
+  gone.forEach(function(p){
+    t += '<div class="proj-row"><button class="modal-opt" style="cursor:default"><strong>' + esc(p.name) + '</strong><span>In trash</span></button>'
+      + '<button class="btn btn-purple btn-sm" onclick="restoreProject(\'' + p.id + '\')">Restore</button></div>';
+  });
+  document.getElementById('trashList').innerHTML = t;
+  document.getElementById('trashHdr').style.display = gone.length ? 'block' : 'none';
+  document.getElementById('recoverBtn').style.display = (oldAutosave() && !localStorage.getItem('boxscout_recovered')) ? 'flex' : 'none';
+}
+function showProjects(){
+  renderProjList();
+  document.getElementById('projModal').classList.add('show');
+  AppSync.list().then(renderProjList);
+}
+
+(async function boot(){
+  syncInit();
+  var list = await AppSync.list();
+  var live = list.filter(function(p){ return !p.trashed; });
+  if(!live.length){
+    var old = oldAutosave();
+    if(old){
+      await createProject('My boxes (from this device)', {v:3, boxes:old.boxes, nextId:old.nextId || (old.boxes.length + 1), customCats:old.customCats || []});
+      try{ localStorage.setItem('boxscout_recovered', '1'); }catch(e){}
+      showBanner('&#128190; Your saved boxes were moved into a project. Rename it from the Project menu.', 'info', 7000);
+    } else {
+      await createProject('My boxes');
+    }
+    return;
+  }
+  var cur = null;
+  try{ cur = localStorage.getItem('boxscout_current'); }catch(e){}
+  if(!cur || !live.some(function(p){ return p.id === cur; })) cur = live[0].id;
+  if(oldAutosave() && !localStorage.getItem('boxscout_recovered')){
+    showBanner('Found boxes saved by the old version on this device. Open the Project menu to recover them.', 'info', 8000);
+  }
+  await openProject(cur);
+})();
 </script>
 </body>
 </html>
