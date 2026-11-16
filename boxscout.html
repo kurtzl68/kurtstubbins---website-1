@@ -1823,20 +1823,39 @@ async function openFirstOrNew(skipId){
   if(l.length) await openProject(l[0].id); else await createProject('My boxes');
 }
 
-function newProject(){
-  var n = window.prompt('Name for the new project:', '');
+function askName(msg, def){
+  return new Promise(function(resolve){
+    try{ resolve(window.prompt(msg, def)); return; }catch(e){}
+    var ov = document.createElement('div');
+    ov.className = 'overlay show'; ov.style.zIndex = 200;
+    var m = document.createElement('div'); m.className = 'modal';
+    var h = document.createElement('h2'); h.textContent = msg;
+    var inp = document.createElement('input'); inp.type = 'text'; inp.value = def || '';
+    inp.style.cssText = 'width:100%;padding:10px;margin:8px 0 14px;font-size:16px;border:1px solid var(--border);background:var(--surface);color:var(--ink)';
+    var row = document.createElement('div'); row.style.cssText = 'display:flex;gap:8px;justify-content:flex-end';
+    function done(v){ ov.remove(); resolve(v); }
+    var c = document.createElement('button'); c.textContent = 'Cancel'; c.className = 'btn btn-purple'; c.onclick = function(){ done(null); };
+    var o = document.createElement('button'); o.textContent = 'OK'; o.className = 'btn btn-primary'; o.onclick = function(){ done(inp.value); };
+    inp.onkeydown = function(ev){ if(ev.key === 'Enter') done(inp.value); else if(ev.key === 'Escape') done(null); };
+    row.appendChild(c); row.appendChild(o); m.appendChild(h); m.appendChild(inp); m.appendChild(row); ov.appendChild(m);
+    document.body.appendChild(ov); inp.focus(); inp.select();
+  });
+}
+
+async function newProject(){
+  var n = await askName('Name for the new project:', '');
   if(n == null || !n.trim()) return;
   closeModal('projModal');
   createProject(n.trim().slice(0, 60));
 }
-function renameProject(id){
-  var n = window.prompt('New name:', projName(id));
+async function renameProject(id){
+  var n = await askName('New name:', projName(id));
   if(n == null || !n.trim()) return;
   AppSync.rename(id, n.trim().slice(0, 60)).then(function(){ showProjName(); renderProjList(); });
   showProjName(); renderProjList();
 }
 async function duplicateProject(id){
-  var n = window.prompt('Name for the copy:', projName(id) + ' copy');
+  var n = await askName('Name for the copy:', projName(id) + ' copy');
   if(n == null || !n.trim()) return;
   await saveLocalNow();
   var src = (id === PROJ.cur) ? docOf() : await AppSync.local.get(pKey(id));
@@ -1878,21 +1897,28 @@ function importAsProject(e){
   var file = e.target.files[0];
   if(!file) return;
   var reader = new FileReader();
-  reader.onload = function(ev){
+  var input = e.target;
+  reader.onload = async function(ev){
+    var d;
     try{
-      var d = JSON.parse(ev.target.result);
-      if(!d.boxes) throw new Error('bad format');
-      var def = file.name.replace(/\.json$/i, '').replace(/[_-]+/g, ' ').trim() || 'Imported';
-      var n = window.prompt('Name for this project (' + d.boxes.length + ' boxes):', def);
-      if(n == null || !n.trim()) return;
-      closeModal('projModal');
-      createProject(n.trim().slice(0, 60), normBoxes(d)).then(function(){
-        showBanner('&#10003; Imported ' + d.boxes.length + ' boxes into "' + esc(n.trim()) + '".', 'success');
-      });
+      d = JSON.parse(ev.target.result);
+      if(!d || !d.boxes) throw new Error('bad format');
     }catch(err){
       showBanner('&#9888; Could not read file - make sure it is a BoxScout .json backup.', 'warn', 5000);
+      input.value = '';
+      return;
     }
-    e.target.value = '';
+    input.value = '';
+    try{
+      var def = file.name.replace(/\.json$/i, '').replace(/[_-]+/g, ' ').trim() || 'Imported';
+      var n = await askName('Name for this project (' + d.boxes.length + ' boxes):', def);
+      if(n == null || !n.trim()) return;
+      closeModal('projModal');
+      await createProject(n.trim().slice(0, 60), normBoxes(d));
+      showBanner('&#10003; Imported ' + d.boxes.length + ' boxes into "' + esc(n.trim()) + '".', 'success');
+    }catch(err){
+      showBanner('&#9888; Import failed: ' + esc(String(err && err.message || err)), 'warn', 8000);
+    }
   };
   reader.readAsText(file);
 }
@@ -1905,10 +1931,10 @@ function oldAutosave(){
     return (d && Array.isArray(d.boxes) && d.boxes.length) ? d : null;
   }catch(e){ return null; }
 }
-function recoverOld(){
+async function recoverOld(){
   var d = oldAutosave();
   if(!d) return;
-  var n = window.prompt('Name for the recovered project (' + d.boxes.length + ' boxes):', 'Recovered from this device');
+  var n = await askName('Name for the recovered project (' + d.boxes.length + ' boxes):', 'Recovered from this device');
   if(n == null || !n.trim()) return;
   closeModal('projModal');
   createProject(n.trim().slice(0, 60), {v:3, boxes:d.boxes, nextId:d.nextId || (d.boxes.length + 1), customCats:d.customCats || []}).then(function(){
