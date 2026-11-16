@@ -160,11 +160,15 @@ body {
 .expand-btn:hover { opacity:1!important; }
 .has-detail .expand-btn { opacity:.5;color:var(--ink3); }
 .has-detail .expand-btn::before { content:'';position:absolute;width:5px;height:5px;border-radius:50%;background:var(--ink3);top:-2px;right:-1px; }
+.menu-btn { flex-shrink:0;width:22px;height:22px;border:none;background:none;color:var(--muted);font-size:15px;cursor:pointer;opacity:.6;display:flex;align-items:center;justify-content:center;line-height:1;font-family:'DM Mono',monospace;-webkit-tap-highlight-color:transparent; }
+.menu-btn:hover,.menu-btn:active { opacity:1; }
 .del-btn { flex-shrink:0;width:14px;height:14px;border:none;background:none;color:var(--muted);font-size:12px;cursor:pointer;opacity:0;transition:opacity .15s;display:flex;align-items:center;justify-content:center;line-height:1;font-family:'DM Mono',monospace; }
 .item-li:hover .del-btn { opacity:1; }
 .drag-handle { flex-shrink:0;width:10px;margin-top:4px;display:flex;align-items:flex-start;justify-content:center;cursor:grab;opacity:0;transition:opacity .15s;color:var(--faint); }
 .drag-handle:active { cursor:grabbing; }
-.item-li:hover .drag-handle { opacity:.5; }
+.drag-handle { opacity:.35; }
+.item-li:hover .drag-handle { opacity:.7; }
+@media (hover:none) { .drag-handle { display:none; } }
 .drag-handle:hover { opacity:1!important; }
 .item-li.dragging { opacity:.3;background:var(--faint);border-radius:2px; }
 .item-li.drag-over { border-top:2px solid var(--ink3); }
@@ -337,7 +341,7 @@ mark { background:rgba(139,44,44,.12);color:var(--red);border-radius:2px;padding
   @page { size:8.5in 11in;margin:.6in .65in; }
   body { position:static;overflow:visible;height:auto;background:white!important;-webkit-print-color-adjust:exact;print-color-adjust:exact; }
   #app { height:auto;overflow:visible;display:block; }
-  #topbar,#page-nav,.dark-btn,.add-btn,.del-btn,.expand-btn,.resize-handle,.trigger-panel { display:none!important; }
+  #topbar,#page-nav,.dark-btn,.add-btn,.del-btn,.expand-btn,.menu-btn,.resize-handle,.trigger-panel { display:none!important; }
   #detail-view,#research-panel { display:none!important; }
   #pages-track { overflow:visible;height:auto; }
   #pages-slider { transform:none!important;flex-direction:column;width:100%!important;height:auto; }
@@ -586,6 +590,15 @@ mark { background:rgba(139,44,44,.12);color:var(--red);border-radius:2px;padding
   <div id="s-results"></div>
 </div>
 
+<div class="modal-bg" id="item-menu-modal" onclick="if(event.target===this)closeItemMenu()">
+  <div class="bottom-sheet"><div class="bs-handle"></div>
+    <div class="a-item" onclick="imDuplicate()"><div class="a-ico">&#9112;</div><div class="a-lbl">Duplicate entry</div></div>
+    <div class="a-item" onclick="imMoveCopy()"><div class="a-ico">&#8594;</div><div class="a-lbl">Move / Copy to...</div></div><div class="a-div"></div>
+    <div class="a-item" onclick="imShift(-1)"><div class="a-ico">&#8593;</div><div class="a-lbl">Move up</div></div>
+    <div class="a-item" onclick="imShift(1)"><div class="a-ico">&#8595;</div><div class="a-lbl">Move down</div></div>
+  </div>
+</div>
+
 <div class="modal-bg" id="move-copy-modal" onclick="if(event.target===this)closeMoveCopy()">
   <div class="bottom-sheet"><div class="bs-handle"></div><div class="bs-body">
     <div class="bs-title">Move / Copy entry</div>
@@ -787,7 +800,7 @@ function itemHTML(item,pi,ci,ii){
   const resAction=researchExists?'Open →':'+ Create';
   const detEx=detailExists?' exists':'';
   const resEx=researchExists?' exists':'';
-  return`<li class="item-li${item.done?' done':''}${hd}" id="li-${item.id}" ondragover="itemDragOver(event,${pi},${ci},${ii})" ondragleave="itemDragLeave(event)" ondrop="itemDrop(event,${pi},${ci},${ii})"><div class="item-row"><div class="drag-handle" draggable="true" ondragstart="itemDragStart(event,${pi},${ci},${ii})" ondragend="itemDragEnd(event)" title="Drag to reorder"><svg width=\"8\" height=\"12\" viewBox=\"0 0 8 12\" fill=\"none\"><circle cx=\"2\" cy=\"2\" r=\"1.2\" fill=\"currentColor\"/><circle cx=\"6\" cy=\"2\" r=\"1.2\" fill=\"currentColor\"/><circle cx=\"2\" cy=\"6\" r=\"1.2\" fill=\"currentColor\"/><circle cx=\"6\" cy=\"6\" r=\"1.2\" fill=\"currentColor\"/><circle cx=\"2\" cy=\"10\" r=\"1.2\" fill=\"currentColor\"/><circle cx=\"6\" cy=\"10\" r=\"1.2\" fill=\"currentColor\"/></svg></div><div class="bullet-wrap" onclick="toggleDone(${pi},${ci},${ii})"><div class="bdot"></div></div><textarea class="item-ta" rows="1" placeholder="Entry…" data-pi="${pi}" data-ci="${ci}" data-ii="${ii}" onchange="setItemText(${pi},${ci},${ii},this.value)" onblur="setItemText(${pi},${ci},${ii},this.value)" oninput="autoH(this)" onkeydown="itemKey(event,${pi},${ci},${ii})">${esc(item.text)}</textarea><div class="item-actions"><button class="expand-btn" onclick="toggleTrigger(event,${pi},${ci},${ii})" title="Open child page">▸</button><button class="del-btn" onclick="delItem(${pi},${ci},${ii})">×</button></div></div><div class="trigger-panel" id="tp-${item.id}" style="display:none" onclick="event.stopPropagation()"><div class="tp-label">Open child page as —</div><div class="tp-btns"><button class="tp-btn${detEx}" onclick="triggerDetail(${pi},${ci},${ii})"><span class="tp-type">Detail</span><span class="tp-action">${detAction}</span><span class="tp-desc">Notes &amp; subtasks</span></button><button class="tp-btn${resEx}" onclick="triggerResearch(${pi},${ci},${ii})"><span class="tp-type">Research</span><span class="tp-action">${resAction}</span><span class="tp-desc">Contacts, task log</span></button></div></div></li>`;
+  return`<li class="item-li${item.done?' done':''}${hd}" id="li-${item.id}" ondragover="itemDragOver(event,${pi},${ci},${ii})" ondragleave="itemDragLeave(event)" ondrop="itemDrop(event,${pi},${ci},${ii})"><div class="item-row"><div class="drag-handle" draggable="true" ondragstart="itemDragStart(event,${pi},${ci},${ii})" ondragend="itemDragEnd(event)" title="Drag to reorder"><svg width=\"8\" height=\"12\" viewBox=\"0 0 8 12\" fill=\"none\"><circle cx=\"2\" cy=\"2\" r=\"1.2\" fill=\"currentColor\"/><circle cx=\"6\" cy=\"2\" r=\"1.2\" fill=\"currentColor\"/><circle cx=\"2\" cy=\"6\" r=\"1.2\" fill=\"currentColor\"/><circle cx=\"6\" cy=\"6\" r=\"1.2\" fill=\"currentColor\"/><circle cx=\"2\" cy=\"10\" r=\"1.2\" fill=\"currentColor\"/><circle cx=\"6\" cy=\"10\" r=\"1.2\" fill=\"currentColor\"/></svg></div><div class="bullet-wrap" onclick="toggleDone(${pi},${ci},${ii})"><div class="bdot"></div></div><textarea class="item-ta" rows="1" placeholder="Entry…" data-pi="${pi}" data-ci="${ci}" data-ii="${ii}" onchange="setItemText(${pi},${ci},${ii},this.value)" onblur="setItemText(${pi},${ci},${ii},this.value)" oninput="autoH(this)" onkeydown="itemKey(event,${pi},${ci},${ii})">${esc(item.text)}</textarea><div class="item-actions"><button class="menu-btn" onclick="openItemMenu(event,${pi},${ci},${ii})" title="Duplicate / move" aria-label="Entry menu">&#8943;</button><button class="expand-btn" onclick="toggleTrigger(event,${pi},${ci},${ii})" title="Open child page">▸</button><button class="del-btn" onclick="delItem(${pi},${ci},${ii})">×</button></div></div><div class="trigger-panel" id="tp-${item.id}" style="display:none" onclick="event.stopPropagation()"><div class="tp-label">Open child page as —</div><div class="tp-btns"><button class="tp-btn${detEx}" onclick="triggerDetail(${pi},${ci},${ii})"><span class="tp-type">Detail</span><span class="tp-action">${detAction}</span><span class="tp-desc">Notes &amp; subtasks</span></button><button class="tp-btn${resEx}" onclick="triggerResearch(${pi},${ci},${ii})"><span class="tp-type">Research</span><span class="tp-action">${resAction}</span><span class="tp-desc">Contacts, task log</span></button></div></div></li>`;
 }
 
 /* ── ROW HEIGHT SYNC ── */
@@ -1701,27 +1714,46 @@ window.addEventListener('beforeprint',()=>{
 });
 window.addEventListener('afterprint',()=>{document.querySelectorAll('[data-print-hdr]').forEach(el=>el.remove());document.getElementById('print-appendix').innerHTML='';requestAnimationFrame(syncAllRows);});
 
-/* ── LONG-PRESS → MOVE / COPY ── */
-let lpTimer=null,lpActive=false;
-const track=document.getElementById('pages-track');
-
-track.addEventListener('touchstart',e=>{
-  const ta=e.target.closest('.item-ta');if(!ta)return;
-  const pi=+ta.dataset.pi,ci=+ta.dataset.ci,ii=+ta.dataset.ii;
-  lpActive=false;
-  lpTimer=setTimeout(()=>{lpActive=true;openMoveCopy(pi,ci,ii);},500);
-},{passive:true});
-track.addEventListener('touchmove',()=>{if(lpTimer){clearTimeout(lpTimer);lpTimer=null;}},{passive:true});
-track.addEventListener('touchend',()=>{if(lpTimer){clearTimeout(lpTimer);lpTimer=null;}},{passive:true});
-
-track.addEventListener('mousedown',e=>{
-  const ta=e.target.closest('.item-ta');if(!ta)return;
-  const pi=+ta.dataset.pi,ci=+ta.dataset.ci,ii=+ta.dataset.ii;
-  lpActive=false;
-  lpTimer=setTimeout(()=>{lpActive=true;openMoveCopy(pi,ci,ii);},600);
-});
-document.addEventListener('mousemove',()=>{if(lpTimer){clearTimeout(lpTimer);lpTimer=null;}});
-document.addEventListener('mouseup',()=>{if(lpTimer){clearTimeout(lpTimer);lpTimer=null;}});
+/* ── ITEM MENU (duplicate / move up / down / move-copy) ── */
+let imCtx=null;
+function openItemMenu(e,pi,ci,ii){
+  if(e){e.stopPropagation();e.preventDefault();}
+  /* flush any text still in the box (iOS buttons may not blur the textarea) */
+  const ta=document.querySelector('.item-ta[data-pi="'+pi+'"][data-ci="'+ci+'"][data-ii="'+ii+'"]');
+  const it=db.pages[pi].cells[ci].items[ii];
+  if(ta&&it&&ta.value!==it.text){it.text=ta.value;save();}
+  imCtx={pi,ci,ii};
+  document.getElementById('item-menu-modal').classList.add('open');
+}
+function closeItemMenu(){document.getElementById('item-menu-modal').classList.remove('open');imCtx=null;}
+function imDuplicate(){
+  if(!imCtx)return;
+  const {pi,ci,ii}=imCtx;
+  const items=db.pages[pi].cells[ci].items;
+  const clone=JSON.parse(JSON.stringify(items[ii]));
+  clone.id=uid();
+  if(clone.subtasks)clone.subtasks.forEach(s=>{s.id=uid();});
+  if(clone.resources)clone.resources.forEach(r=>{r.id=uid();});
+  if(clone.detailId)clone.detailId=uid();
+  if(clone.researchId)clone.researchId=uid();
+  items.splice(ii+1,0,clone);
+  save();reRenderCell(pi,ci);closeItemMenu();showToast('Duplicated');
+}
+function imShift(d){
+  if(!imCtx)return;
+  const {pi,ci,ii}=imCtx;
+  const items=db.pages[pi].cells[ci].items;
+  const j=ii+d;
+  if(j<0||j>=items.length){showToast(d<0?'Already at top':'Already at bottom');closeItemMenu();return;}
+  const [m]=items.splice(ii,1);items.splice(j,0,m);
+  save();reRenderCell(pi,ci);closeItemMenu();
+}
+function imMoveCopy(){
+  if(!imCtx)return;
+  const {pi,ci,ii}=imCtx;
+  closeItemMenu();
+  openMoveCopy(pi,ci,ii);
+}
 
 /* ── MOVE / COPY FUNCTIONS ── */
 let mcCtx=null,mcTab='move';
