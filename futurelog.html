@@ -160,6 +160,8 @@ body {
 .expand-btn:hover { opacity:1!important; }
 .has-detail .expand-btn { opacity:.5;color:var(--ink3); }
 .has-detail .expand-btn::before { content:'';position:absolute;width:5px;height:5px;border-radius:50%;background:var(--ink3);top:-2px;right:-1px; }
+#item-menu-modal { background:rgba(0,0,0,.05);backdrop-filter:none;-webkit-backdrop-filter:none; }
+.item-li.im-active { background:var(--faint);border-radius:2px; }
 .menu-btn { flex-shrink:0;width:22px;height:22px;border:none;background:none;color:var(--muted);font-size:15px;cursor:pointer;opacity:.6;display:flex;align-items:center;justify-content:center;line-height:1;font-family:'DM Mono',monospace;-webkit-tap-highlight-color:transparent; }
 .menu-btn:hover,.menu-btn:active { opacity:1; }
 .del-btn { flex-shrink:0;width:14px;height:14px;border:none;background:none;color:var(--muted);font-size:12px;cursor:pointer;opacity:0;transition:opacity .15s;display:flex;align-items:center;justify-content:center;line-height:1;font-family:'DM Mono',monospace; }
@@ -595,7 +597,8 @@ mark { background:rgba(139,44,44,.12);color:var(--red);border-radius:2px;padding
     <div class="a-item" onclick="imDuplicate()"><div class="a-ico">&#9112;</div><div class="a-lbl">Duplicate entry</div></div>
     <div class="a-item" onclick="imMoveCopy()"><div class="a-ico">&#8594;</div><div class="a-lbl">Move / Copy to...</div></div><div class="a-div"></div>
     <div class="a-item" onclick="imShift(-1)"><div class="a-ico">&#8593;</div><div class="a-lbl">Move up</div></div>
-    <div class="a-item" onclick="imShift(1)"><div class="a-ico">&#8595;</div><div class="a-lbl">Move down</div></div>
+    <div class="a-item" onclick="imShift(1)"><div class="a-ico">&#8595;</div><div class="a-lbl">Move down</div></div><div class="a-div"></div>
+    <div class="a-item" onclick="closeItemMenu()"><div class="a-ico">&#10003;</div><div class="a-lbl">Done</div></div>
   </div>
 </div>
 
@@ -1724,8 +1727,16 @@ function openItemMenu(e,pi,ci,ii){
   if(ta&&it&&ta.value!==it.text){it.text=ta.value;save();}
   imCtx={pi,ci,ii};
   document.getElementById('item-menu-modal').classList.add('open');
+  imHighlight();
 }
-function closeItemMenu(){document.getElementById('item-menu-modal').classList.remove('open');imCtx=null;}
+function imHighlight(){
+  document.querySelectorAll('.item-li.im-active').forEach(el=>el.classList.remove('im-active'));
+  if(!imCtx)return;
+  const it=db.pages[imCtx.pi].cells[imCtx.ci].items[imCtx.ii];
+  const li=it&&document.getElementById('li-'+it.id);
+  if(li){li.classList.add('im-active');try{li.scrollIntoView({block:'center',behavior:'smooth'})}catch(e){}}
+}
+function closeItemMenu(){document.getElementById('item-menu-modal').classList.remove('open');document.querySelectorAll('.item-li.im-active').forEach(el=>el.classList.remove('im-active'));imCtx=null;}
 function imDuplicate(){
   if(!imCtx)return;
   const {pi,ci,ii}=imCtx;
@@ -1744,9 +1755,10 @@ function imShift(d){
   const {pi,ci,ii}=imCtx;
   const items=db.pages[pi].cells[ci].items;
   const j=ii+d;
-  if(j<0||j>=items.length){showToast(d<0?'Already at top':'Already at bottom');closeItemMenu();return;}
+  if(j<0||j>=items.length){showToast(d<0?'Already at top':'Already at bottom');return;}
   const [m]=items.splice(ii,1);items.splice(j,0,m);
-  save();reRenderCell(pi,ci);closeItemMenu();
+  save();reRenderCell(pi,ci);
+  imCtx.ii=j;imHighlight();
 }
 function imMoveCopy(){
   if(!imCtx)return;
