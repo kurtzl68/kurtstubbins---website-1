@@ -98,6 +98,15 @@ input {
 input::placeholder { color: var(--muted); }
 input.name { font-family: var(--serif); font-size: 18px; }
 
+/* Recent */
+.chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.chip { display: inline-flex; align-items: stretch; border: 0.5px solid var(--ink3); border-radius: 2px; }
+.chip button { border: 0; border-radius: 0; min-height: 36px; }
+.chip .pick { text-align: left; max-width: 190px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chip .del { border-left: 0.5px solid var(--faint); padding: 9px 10px; color: var(--ink3); }
+.chip small { color: var(--ink3); letter-spacing: 0.1em; margin-left: 6px; }
+.past { font-family: var(--mono); font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--red); margin-top: 2px; }
+
 /* Result */
 .hero { display: flex; flex-direction: column; gap: 4px; }
 .hero .big { font-family: var(--mono); font-size: 56px; font-weight: 500; line-height: 1; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
@@ -134,6 +143,11 @@ input.name { font-family: var(--serif); font-size: 18px; }
     <button id="theme" type="button" aria-label="Toggle light and dark">Dark</button>
   </div>
 
+  <div class="sheet" id="recentbox" style="display:none;">
+    <div class="label">Recent</div>
+    <div class="chips" id="recent"></div>
+  </div>
+
   <div class="sheet hero" id="hero" aria-live="polite"></div>
 
   <div class="sheet">
@@ -149,6 +163,7 @@ input.name { font-family: var(--serif); font-size: 18px; }
     <div class="fields">
       <div class="label" id="arrlabel">Arrive at D by</div>
       <input id="arrive" type="datetime-local">
+      <div class="past" id="pastwarn" style="display:none;">Already past - check the date and time</div>
       <input id="destname" class="name" type="text" placeholder="Destination name (optional)" aria-label="Name of destination" style="margin-top:4px;">
     </div>
     <div class="fields" style="margin-top:14px;">
@@ -160,7 +175,7 @@ input.name { font-family: var(--serif); font-size: 18px; }
       <button id="add" type="button" class="solid">Add stop</button>
       <button id="reset" type="button">Reset</button>
     </div>
-    <p class="note" style="margin-top:12px;">Enter your trip in travel order: start at A, go to B, go to C, and the last letter is your destination. Drive times are your own estimates, so keep a buffer.</p>
+    <p class="note" style="margin-top:12px;">Enter your trip in travel order: start at A, go to B, and the last letter is your destination. The app opens fresh each time; earlier trips are under Recent. Drive times are your own estimates, so keep a buffer.</p>
   </div>
 
 </div>
@@ -175,11 +190,13 @@ input.name { font-family: var(--serif); font-size: 18px; }
   function toLocalInput(d) {
     return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()) + "T" + pad(d.getHours()) + ":" + pad(d.getMinutes());
   }
+  function newId() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
   // stops are in travel order. drive = minutes from this stop to the NEXT stop (or to X for the last one). stay = minutes spent at this stop (unused for A).
   function defaultState() {
-    var d = new Date(Date.now() + 3 * 3600 * 1000);
+    var d = new Date(Date.now() + 3600 * 1000);
     d.setMinutes(Math.ceil(d.getMinutes() / 5) * 5, 0, 0);
     return {
+      id: newId(),
       arrive: toLocalInput(d),
       buffer: 5,
       dest: "",
@@ -190,15 +207,50 @@ input.name { font-family: var(--serif); font-size: 18px; }
     };
   }
 
-  var state;
-  try {
-    var raw = localStorage.getItem(LS_KEY);
-    state = raw ? JSON.parse(raw) : defaultState();
-    if (!state || !state.stops || !state.stops.length || !state.arrive) { state = defaultState(); }
-    if (typeof state.dest !== "string") { state.dest = ""; }
-  } catch (e) { state = defaultState(); }
+  // Always open fresh: today, about an hour from now, three empty locations. Past plans live in Recent.
+  var state = defaultState();
+  var LS_HIST = "leaveby_hist_v1";
+  var MAX_TRIPS = 4;
 
-  function save() { try { localStorage.setItem(LS_KEY, JSON.stringify(state)); } catch (e) {} }
+  function loadHist() {
+    try { var h = JSON.parse(localStorage.getItem(LS_HIST) || "[]"); return Array.isArray(h) ? h : []; }
+    catch (e) { return []; }
+  }
+  function storeHist(h) { try { localStorage.setItem(LS_HIST, JSON.stringify(h)); } catch (e) {} }
+  function hasContent() {
+    if ((state.dest || "").trim()) { return true; }
+    for (var i = 0; i < state.stops.length; i++) { if ((state.stops[i].name || "").trim()) { return true; } }
+    return false;
+  }
+  function destKey(s) { return (s || "").trim().toLowerCase(); }
+  // Keep the newest MAX_TRIPS shared/copied trips, plus the newest one unshared draft, plus the plan being edited now.
+  function prune(h) {
+    h.sort(function (a, b) { return b.t - a.t; });
+    var out = [], trips = 0, drafts = 0;
+    for (var i = 0; i < h.length; i++) {
+      var e = h[i];
+      if (e.id === state.id) { out.push(e); continue; }
+      if (e.draft) { if (drafts < 1) { drafts++; out.push(e); } }
+      else if (trips < MAX_TRIPS) { trips++; out.push(e); }
+    }
+    return out;
+  }
+  function snapshot(draft) {
+    return { id: state.id, t: Date.now(), draft: draft, dest: state.dest || "", buffer: state.buffer, stops: JSON.parse(JSON.stringify(state.stops)) };
+  }
+  function upsert(draft) {
+    if (!hasContent()) { return; }
+    var h = loadHist().filter(function (e) { return e.id !== state.id; });
+    if (!draft && destKey(state.dest)) {
+      h = h.filter(function (e) { return destKey(e.dest) !== destKey(state.dest); });
+    }
+    h.push(snapshot(draft));
+    storeHist(prune(h));
+    renderRecent();
+  }
+  function save() { upsert(true); }
+  function commit() { upsert(false); }
+
   function num(v) { var n = parseFloat(v); return (isFinite(n) && n > 0) ? n : 0; }
   function esc(s) { return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;"); }
   function label(i) { return i < 26 ? LETTERS.charAt(i) : String(i + 1); }
@@ -243,6 +295,9 @@ input.name { font-family: var(--serif); font-size: 18px; }
     hero: document.getElementById("hero"),
     tl: document.getElementById("timeline"),
     stops: document.getElementById("stops"),
+    recentbox: document.getElementById("recentbox"),
+    recent: document.getElementById("recent"),
+    pastwarn: document.getElementById("pastwarn"),
     arrive: document.getElementById("arrive"),
     destname: document.getElementById("destname"),
     buffer: document.getElementById("buffer"),
@@ -257,10 +312,12 @@ input.name { font-family: var(--serif); font-size: 18px; }
     var c = compute();
     var n = state.stops.length;
     if (!c) {
+      el.pastwarn.style.display = "none";
       el.hero.innerHTML = '<div class="label">Set an arrival time</div><div class="sub">Pick when you need to arrive at ' + dl() + '.</div>';
       el.tl.innerHTML = "";
       return;
     }
+    el.pastwarn.style.display = (c.T < Date.now()) ? "block" : "none";
     var xKey = dayKey(c.T);
     var lv = c.stops[0].leave;
     var mins = (lv - Date.now()) / 60000;
@@ -360,9 +417,49 @@ input.name { font-family: var(--serif); font-size: 18px; }
     var last = document.getElementById("stay" + (state.stops.length - 1));
     if (last) { last.focus(); }
   });
+  function chipLabel(e) {
+    var n = (e.dest || "").trim();
+    if (!n) { for (var i = 0; i < e.stops.length; i++) { if ((e.stops[i].name || "").trim()) { n = e.stops[i].name.trim(); break; } } }
+    return n || "Untitled";
+  }
+  function renderRecent() {
+    var h = loadHist().filter(function (e) { return e.id !== state.id; });
+    h.sort(function (a, b) { return b.t - a.t; });
+    if (!h.length) { el.recentbox.style.display = "none"; el.recent.innerHTML = ""; return; }
+    var html = "";
+    for (var i = 0; i < h.length; i++) {
+      html += '<span class="chip"><button type="button" class="pick" data-load="' + esc(h[i].id) + '">' + esc(chipLabel(h[i])) + (h[i].draft ? '<small>draft</small>' : '') + '</button>' +
+        '<button type="button" class="del" data-del="' + esc(h[i].id) + '" aria-label="Delete ' + esc(chipLabel(h[i])) + '">x</button></span>';
+    }
+    el.recent.innerHTML = html;
+    el.recentbox.style.display = "block";
+  }
+  el.recent.addEventListener("click", function (e) {
+    var d = e.target.closest("[data-del]");
+    if (d) {
+      var id = d.getAttribute("data-del");
+      storeHist(loadHist().filter(function (x) { return x.id !== id; }));
+      renderRecent();
+      return;
+    }
+    var b = e.target.closest("[data-load]");
+    if (!b) { return; }
+    var lid = b.getAttribute("data-load");
+    var hit = loadHist().filter(function (x) { return x.id === lid; })[0];
+    if (!hit) { return; }
+    // Keep names, drive times and stays; always use a fresh arrive time (today).
+    var fresh = defaultState();
+    fresh.dest = hit.dest || "";
+    fresh.buffer = hit.buffer;
+    fresh.stops = JSON.parse(JSON.stringify(hit.stops));
+    state = fresh;
+    renderInputs(); renderOutputs(); renderRecent();
+    try { window.scrollTo(0, 0); } catch (e2) {}
+  });
+
   el.reset.addEventListener("click", function () {
     if (el.reset.dataset.armed === "1") {
-      state = defaultState(); save(); renderInputs(); renderOutputs();
+      state = defaultState(); renderInputs(); renderOutputs(); renderRecent();
       el.reset.textContent = "Reset"; el.reset.dataset.armed = "0";
     } else {
       el.reset.textContent = "Tap again to confirm"; el.reset.dataset.armed = "1";
@@ -373,6 +470,7 @@ input.name { font-family: var(--serif); font-size: 18px; }
   el.copy.addEventListener("click", function () {
     var c = compute();
     if (!c) { return; }
+    commit();
     var n = state.stops.length;
     var lines = [];
     for (var i = 0; i < n; i++) {
@@ -496,6 +594,7 @@ input.name { font-family: var(--serif); font-size: 18px; }
     var m = timelineModel();
     if (!m) { flash(el.share, "Set arrival time", "Share image"); return; }
     var base = safeName(state.dest);
+    commit();
     drawTimeline(m).toBlob(function (blob) {
       if (!blob) { flash(el.share, "Image failed", "Share image"); return; }
       var file;
@@ -534,6 +633,7 @@ input.name { font-family: var(--serif); font-size: 18px; }
 
   renderInputs();
   renderOutputs();
+  renderRecent();
   setInterval(renderOutputs, 30000);
 })();
 </script>
