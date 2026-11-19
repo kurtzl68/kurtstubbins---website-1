@@ -19,11 +19,15 @@
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
   html, body { background: var(--bg); color: var(--text); font-family: Georgia, serif; -webkit-text-size-adjust: 100%; }
   body { padding: env(safe-area-inset-top) env(safe-area-inset-right) calc(env(safe-area-inset-bottom) + 110px) env(safe-area-inset-left); }
+  /* corners screen: one fixed page, never scrolls; leaves room for Safari's floating address pill */
+  body.fixed { position: fixed; top: 0; left: 0; right: 0; bottom: 0; width: 100%; overflow: hidden; padding-bottom: calc(env(safe-area-inset-bottom) + 20px); overscroll-behavior: none; }
+  body.fixed #app { position: relative; height: 100%; }
   #app { max-width: 480px; margin: 0 auto; min-height: 100vh; }
-  .top { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; border-bottom: 1px solid var(--border); }
-  .top b { font: 700 13px Helvetica, Arial, sans-serif; letter-spacing: .14em; }
-  .top button { background: none; border: 0; color: var(--text); padding: 6px; }
-  .step { font: 700 11px Helvetica, Arial, sans-serif; letter-spacing: .14em; color: var(--label); padding: 10px 14px 6px; }
+  .top { display: flex; align-items: center; gap: 10px; height: 38px; padding: 0 12px; border-bottom: 1px solid var(--border); }
+  .top b { font: 700 12px Helvetica, Arial, sans-serif; letter-spacing: .12em; white-space: nowrap; }
+  .top button { background: none; border: 0; color: var(--text); padding: 6px; flex: none; }
+  .top .step { font: 700 10px Helvetica, Arial, sans-serif; letter-spacing: .12em; color: var(--label); margin-left: auto; white-space: nowrap; }
+  .top .tb { font: 700 10px Helvetica, Arial, sans-serif; letter-spacing: .1em; white-space: nowrap; background: var(--btn); color: var(--text); border: 1px solid var(--border); padding: 6px 8px; }
   .pad { padding: 0 14px 18px; }
   .mono { font: 12px "Courier New", monospace; color: var(--sub); }
   .lbl { font: 700 11px Helvetica, Arial, sans-serif; letter-spacing: .14em; color: var(--label); margin: 12px 0 6px; }
@@ -37,14 +41,30 @@
   .grid > * { flex: 1; }
   .gap6 { margin-top: 6px; }
   #cwrap { position: relative; }
+  #sCorners { padding: 6px 10px 0; }
+  .dock { padding-top: 6px; }
+  .dock .b { height: 32px; padding: 0; font-size: 10.5px; letter-spacing: .05em; display: flex; align-items: center; justify-content: center; }
+  .rline { display: flex; justify-content: space-between; gap: 8px; font: 10px "Courier New", monospace; color: var(--sub); margin-bottom: 6px; white-space: nowrap; }
+  .r1 { display: flex; gap: 3px; }
+  .r1 .c { flex: 0 0 30px; } .r1 .gp { flex: 0 0 8px; } .r1 .e { flex: 1; }
+  .r2 { display: flex; gap: 10px; margin-top: 6px; align-items: flex-start; }
+  .dock .arrows { display: grid; grid-template-columns: 46px 46px 46px; grid-template-rows: 34px 34px; gap: 4px; flex: none; }
+  .dock .arrows .b { height: 34px; }
+  .dock .arrows svg { width: 14px; height: 14px; }
+  .a-up { grid-column: 2; grid-row: 1; } .a-left { grid-column: 1; grid-row: 2; } .a-down { grid-column: 2; grid-row: 2; } .a-right { grid-column: 3; grid-row: 2; }
+  .col2 { display: flex; flex-direction: column; gap: 4px; width: 66px; flex: none; }
+  .col3 { display: flex; flex-direction: column; gap: 4px; flex: 1; }
+  .col2 .b, .col3 .b { height: 34px; }
+  .r3 { display: flex; gap: 6px; margin-top: 6px; }
+  .r3 .b { height: 40px; }
   #cv { display: block; width: 100%; touch-action: none; -webkit-user-select: none; user-select: none; }
-  .arrows { display: grid; grid-template-columns: 52px 52px 52px; grid-template-rows: 46px 46px 46px; gap: 5px; justify-content: center; }
-  .arrows .b { display: flex; align-items: center; justify-content: center; padding: 0; }
   .arrows svg { fill: var(--text); pointer-events: none; }
   .r90 svg { transform: rotate(90deg); } .r180 svg { transform: rotate(180deg); } .r270 svg { transform: rotate(270deg); }
   .nrow { display: flex; gap: 10px; align-items: center; }
   .hide { display: none !important; }
   #statusWrap { padding: 8px 14px 0; min-height: 34px; }
+  body.fixed #statusWrap { position: absolute; top: 38px; left: 0; right: 0; z-index: 5; pointer-events: none; min-height: 0; padding: 3px 12px; background: var(--card); opacity: .92; }
+  body.fixed #statusWrap.empty { display: none; }
   #status { font: 12px "Courier New", monospace; color: var(--sub); }
   #status.err { color: var(--err); } #status.ok { color: var(--ok); }
   #bar { height: 3px; background: var(--border); margin-top: 5px; display: none; }
@@ -62,11 +82,12 @@
 <div id="app">
   <div class="top">
     <b>IMAGE CORRECTOR</b>
+    <span class="step" id="stepLbl">OPEN A PHOTO</span>
+    <button class="tb hide" id="newTop">NEW PHOTO</button>
     <button id="themeBtn" aria-label="Light or dark">
       <svg width="18" height="18" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.5" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M8 1.5 A6.5 6.5 0 0 1 8 14.5 Z" fill="currentColor"/></svg>
     </button>
   </div>
-  <div class="step" id="stepLbl">OPEN A PHOTO</div>
   <div id="statusWrap"><div id="status"></div><div id="bar"><i></i></div></div>
 
   <!-- START -->
@@ -77,50 +98,28 @@
   </section>
 
   <!-- CORNERS -->
-  <section id="sCorners" class="pad hide">
+  <section id="sCorners" class="hide">
     <div class="card" id="cwrap"><canvas id="cv"></canvas></div>
-    <div class="mono" id="readout" style="margin-top:6px">&nbsp;</div>
-    <div class="mono" id="outinfo">&nbsp;</div>
-
-    <div class="lbl">SELECT A CORNER OR AN EDGE</div>
-    <div class="grid">
-      <button class="b" id="sel_c0">1</button><button class="b" id="sel_c1">2</button>
-      <button class="b" id="sel_c2">3</button><button class="b" id="sel_c3">4</button>
-    </div>
-    <div class="grid gap6">
-      <button class="b" id="sel_e0">TOP</button><button class="b" id="sel_e1">RIGHT</button>
-      <button class="b" id="sel_e2">BOTTOM</button><button class="b" id="sel_e3">LEFT</button>
-    </div>
-
-    <div class="lbl">NUDGE</div>
-    <div class="nrow">
-      <div class="mono" id="moving" style="width:78px; line-height:1.5">MOVING<br>CORNER 1</div>
-      <div class="arrows" style="flex:1">
-        <div></div>
-        <button class="b" id="n_up"><svg width="16" height="16" viewBox="0 0 14 14"><path d="M7 3 L12 11 L2 11 Z"/></svg></button>
-        <div></div>
-        <button class="b r270" id="n_left"><svg width="16" height="16" viewBox="0 0 14 14"><path d="M7 3 L12 11 L2 11 Z"/></svg></button>
-        <div></div>
-        <button class="b r90" id="n_right"><svg width="16" height="16" viewBox="0 0 14 14"><path d="M7 3 L12 11 L2 11 Z"/></svg></button>
-        <div></div>
-        <button class="b r180" id="n_down"><svg width="16" height="16" viewBox="0 0 14 14"><path d="M7 3 L12 11 L2 11 Z"/></svg></button>
-        <div></div>
+    <div class="dock" id="dock">
+      <div class="rline"><span id="readout">&nbsp;</span><span id="outinfo">&nbsp;</span></div>
+      <div class="r1">
+        <button class="b c" id="sel_c0">1</button><button class="b c" id="sel_c1">2</button>
+        <button class="b c" id="sel_c2">3</button><button class="b c" id="sel_c3">4</button><div class="gp"></div>
+        <button class="b e" id="sel_e0">TOP</button><button class="b e" id="sel_e1">RIGHT</button>
+        <button class="b e" id="sel_e2">BOTTOM</button><button class="b e" id="sel_e3">LEFT</button>
       </div>
-      <div style="width:72px">
-        <div class="lbl" style="margin-top:0">STEP</div>
-        <button class="b acc" id="st1">1 PX</button>
-        <button class="b gap6" id="st10">10 PX</button>
+      <div class="r2">
+        <div class="arrows">
+          <button class="b a-up" id="n_up"><svg viewBox="0 0 14 14"><path d="M7 3 L12 11 L2 11 Z"/></svg></button>
+          <button class="b a-left r270" id="n_left"><svg viewBox="0 0 14 14"><path d="M7 3 L12 11 L2 11 Z"/></svg></button>
+          <button class="b a-down r180" id="n_down"><svg viewBox="0 0 14 14"><path d="M7 3 L12 11 L2 11 Z"/></svg></button>
+          <button class="b a-right r90" id="n_right"><svg viewBox="0 0 14 14"><path d="M7 3 L12 11 L2 11 Z"/></svg></button>
+        </div>
+        <div class="col2"><button class="b acc" id="st1">1 PX</button><button class="b" id="st10">10 PX</button></div>
+        <div class="col3"><button class="b" id="resetBtn">RESET</button><button class="b" id="fullBtn">FULL IMAGE</button></div>
       </div>
+      <div class="r3"><button class="b" id="prevBtn" style="flex:1">PREVIEW</button><button class="b acc" id="nextBtn" style="flex:2">NEXT</button></div>
     </div>
-    <div class="mono" style="margin-top:6px; font-size:11px">HOLD AN ARROW TO REPEAT</div>
-
-    <div class="grid" style="margin-top:12px">
-      <button class="b" id="resetBtn">RESET</button>
-      <button class="b" id="fullBtn">FULL IMAGE</button>
-      <button class="b" id="prevBtn">PREVIEW</button>
-    </div>
-    <button class="b acc gap6" id="nextBtn">NEXT</button>
-    <button class="b gap6" id="newBtn1">NEW PHOTO</button>
   </section>
 
   <!-- SAVE -->
@@ -157,21 +156,29 @@
     blob: null, outW: 0, outH: 0, token: 0, thumbUrl: null,
     geo: { cw: 300, ch: 400, s: 1, ox: 0, oy: 0 }
   };
-  var MAXL = 4096, MAXA = 12500000, PAD = 22, ZOOM = 4, LR = 58;
+  var MAXL = 4096, MAXA = 12500000, PAD = 14, ZOOM = 4, LR = 58;
 
   // ---------- helpers
   function css(v) { return getComputedStyle(document.body).getPropertyValue(v).trim(); }
   function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
   function dist(a, b) { return Math.sqrt((a.x - b.x) * (a.x - b.x) + (a.y - b.y) * (a.y - b.y)); }
+  var statusTimer = null;
   function setStatus(msg, kind, prog) {
     var st = $('status'); st.textContent = msg || ''; st.className = kind || '';
+    clearTimeout(statusTimer);
+    $('statusWrap').classList.toggle('empty', !msg && typeof prog !== 'number');
+    if (msg && kind === 'ok' && !$('sCorners').classList.contains('hide')) {
+      statusTimer = setTimeout(function () { $('statusWrap').classList.add('empty'); }, 5000);
+    }
     var bar = $('bar');
     if (typeof prog === 'number') { bar.style.display = 'block'; bar.firstChild.style.width = Math.round(clamp(prog, 0, 1) * 100) + '%'; }
     else { bar.style.display = 'none'; }
   }
   function show(id) {
     ['sStart', 'sCorners', 'sSave'].forEach(function (s) { $(s).classList.toggle('hide', s !== id); });
-    $('stepLbl').textContent = id === 'sStart' ? 'OPEN A PHOTO' : id === 'sCorners' ? 'STEP 1 OF 2 - SET THE 4 CORNERS' : 'STEP 2 OF 2 - SAVE A COPY';
+    $('stepLbl').textContent = id === 'sStart' ? 'OPEN A PHOTO' : id === 'sCorners' ? 'STEP 1 OF 2' : 'STEP 2 OF 2';
+    document.body.classList.toggle('fixed', id === 'sCorners');
+    $('newTop').classList.toggle('hide', id === 'sStart');
     window.scrollTo(0, 0);
     if (id === 'sCorners') { layout(); redraw(); }
   }
@@ -184,7 +191,7 @@
 
   // ---------- load
   $('openBtn').addEventListener('click', function () { $('fileIn').click(); });
-  $('newBtn1').addEventListener('click', newPhoto);
+  $('newTop').addEventListener('click', newPhoto);
   $('newBtn2').addEventListener('click', newPhoto);
   function newPhoto() { S.token++; $('fileIn').value = ''; $('fileIn').click(); }
   $('fileIn').addEventListener('change', function () {
@@ -351,15 +358,21 @@
   function layout() {
     if (!S.src) return;
     var wrapW = $('cwrap').clientWidth || 340;
-    var maxH = Math.max(300, Math.round(window.innerHeight * 0.56));
-    var ch = Math.round(clamp((S.H * (wrapW - PAD * 2) / S.W) + PAD * 2, 260, maxH));
+    // photo area takes the photo's own shape, but never more than the room above the controls
+    var vh = (window.visualViewport && window.visualViewport.height) || window.innerHeight;
+    var top = $('cwrap').getBoundingClientRect().top;
+    var botPad = parseFloat(getComputedStyle(document.body).paddingBottom) || 0;
+    var maxH = Math.max(160, Math.floor(vh - top - $('dock').offsetHeight - botPad - 6));
+    var ch = Math.round(clamp((S.H * (wrapW - PAD * 2) / S.W) + PAD * 2, 120, maxH));
     var dpr = window.devicePixelRatio || 1;
     cv.style.height = ch + 'px';
     cv.width = Math.round(wrapW * dpr); cv.height = Math.round(ch * dpr);
     var s = Math.min((wrapW - PAD * 2) / S.W, (ch - PAD * 2) / S.H);
     S.geo = { cw: wrapW, ch: ch, s: s, ox: (wrapW - S.W * s) / 2, oy: (ch - S.H * s) / 2, dpr: dpr };
   }
-  window.addEventListener('resize', function () { if (S.src && !$('sCorners').classList.contains('hide')) { layout(); redraw(); } });
+  function relayout() { if (S.src && !$('sCorners').classList.contains('hide')) { layout(); redraw(); } }
+  window.addEventListener('resize', relayout);
+  if (window.visualViewport) window.visualViewport.addEventListener('resize', relayout);
   function toD(p) { return { x: S.geo.ox + p.x * S.geo.s, y: S.geo.oy + p.y * S.geo.s }; }
   function fromD(x, y) { return { x: (x - S.geo.ox) / S.geo.s, y: (y - S.geo.oy) / S.geo.s }; }
 
@@ -463,7 +476,6 @@
       $('sel_c' + i).classList.toggle('acc', S.sel.t === 'c' && S.sel.i === i);
       $('sel_e' + i).classList.toggle('acc', S.sel.t === 'e' && S.sel.i === i);
     }
-    $('moving').innerHTML = 'MOVING<br>' + selName();
     var vOnly = S.sel.t === 'e' && S.sel.i % 2 === 0, hOnly = S.sel.t === 'e' && S.sel.i % 2 === 1;
     $('n_left').disabled = vOnly; $('n_right').disabled = vOnly;
     $('n_up').disabled = hOnly; $('n_down').disabled = hOnly;
@@ -531,7 +543,7 @@
         var d2 = dist(p, m) + 8; if (d2 < 40 && d2 < bd) { bd = d2; best = { t: 'e', i: i }; }
       }
     }
-    if (!best) return;
+    if (!best) { if (S.loupe) { S.loupe = false; redraw(); } return; }   // tap elsewhere hides the loupe
     S.sel = best;
     var hp = toD(selPoint());
     S.drag = { start: p, off: { x: hp.x - p.x, y: hp.y - p.y }, orig: S.quad.map(function (q) { return { x: q.x, y: q.y }; }), id: e.pointerId };
@@ -563,17 +575,12 @@
     movePts(selIdx(), dx * S.step, dy * S.step);
     S.loupe = true; afterChange();
   }
-  var loupeTimer = null;
   function bindArrow(id, dx, dy) {
     var el = $(id), t1 = null, t2 = null, n = 0;
-    function stop() {
-      clearTimeout(t1); clearInterval(t2); t1 = t2 = null; n = 0;
-      clearTimeout(loupeTimer); loupeTimer = setTimeout(function () { S.loupe = false; redraw(); }, 800);
-    }
+    function stop() { clearTimeout(t1); clearInterval(t2); t1 = t2 = null; n = 0; }   // loupe stays until a tap elsewhere
     el.addEventListener('pointerdown', function (e) {
       e.preventDefault();
       if (el.disabled) return;
-      clearTimeout(loupeTimer);
       nudge(dx, dy);
       t1 = setTimeout(function () {
         // slow repeat; 1 px steps speed up a little, 10 px steps never do
