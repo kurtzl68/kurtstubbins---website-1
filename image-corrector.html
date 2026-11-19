@@ -18,7 +18,7 @@
   }
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
   html, body { background: var(--bg); color: var(--text); font-family: Georgia, serif; -webkit-text-size-adjust: 100%; }
-  body { padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
+  body { padding: env(safe-area-inset-top) env(safe-area-inset-right) calc(env(safe-area-inset-bottom) + 110px) env(safe-area-inset-left); }
   #app { max-width: 480px; margin: 0 auto; min-height: 100vh; }
   .top { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; border-bottom: 1px solid var(--border); }
   .top b { font: 700 13px Helvetica, Arial, sans-serif; letter-spacing: .14em; }
@@ -464,6 +464,9 @@
       $('sel_e' + i).classList.toggle('acc', S.sel.t === 'e' && S.sel.i === i);
     }
     $('moving').innerHTML = 'MOVING<br>' + selName();
+    var vOnly = S.sel.t === 'e' && S.sel.i % 2 === 0, hOnly = S.sel.t === 'e' && S.sel.i % 2 === 1;
+    $('n_left').disabled = vOnly; $('n_right').disabled = vOnly;
+    $('n_up').disabled = hOnly; $('n_down').disabled = hOnly;
     $('st1').classList.toggle('acc', S.step === 1);
     $('st10').classList.toggle('acc', S.step === 10);
     redraw();
@@ -476,7 +479,21 @@
   $('st10').addEventListener('click', function () { S.step = 10; updateSelUI(); });
 
   // ---------- moving points
+  function quadOk(q) {
+    var MG = Math.max(40, Math.round(Math.min(S.W, S.H) * 0.10)), i, a, b, c;
+    for (i = 0; i < 4; i++) {
+      a = q[i]; b = q[(i + 1) % 4]; c = q[(i + 2) % 4];
+      if (dist(a, b) < MG) return false;
+      if ((b.x - a.x) * (c.y - b.y) - (b.y - a.y) * (c.x - b.x) <= 0) return false;
+    }
+    function mid(u, v) { return { x: (u.x + v.x) / 2, y: (u.y + v.y) / 2 }; }
+    if (dist(mid(q[0], q[1]), mid(q[3], q[2])) < MG) return false;
+    if (dist(mid(q[1], q[2]), mid(q[0], q[3])) < MG) return false;
+    return true;
+  }
   function movePts(idx, dx, dy) {
+    // an edge handle moves on one axis only: top and bottom up/down, left and right sideways
+    if (S.sel.t === 'e') { if (S.sel.i % 2 === 0) dx = 0; else dy = 0; }
     // clamp the shift so every moved point stays inside the image
     var minx = -1e9, maxx = 1e9, miny = -1e9, maxy = 1e9;
     idx.forEach(function (i) {
@@ -485,7 +502,18 @@
       miny = Math.max(miny, -p.y); maxy = Math.min(maxy, S.H - 1 - p.y);
     });
     dx = clamp(dx, minx, maxx); dy = clamp(dy, miny, maxy);
-    idx.forEach(function (i) { S.quad[i] = { x: S.quad[i].x + dx, y: S.quad[i].y + dy }; });
+    var base = S.quad.map(function (q) { return { x: q.x, y: q.y }; });
+    function apply(t) {
+      var q = base.map(function (z) { return { x: z.x, y: z.y }; });
+      idx.forEach(function (i) { q[i] = { x: base[i].x + dx * t, y: base[i].y + dy * t }; });
+      return q;
+    }
+    var full = apply(1);
+    if (quadOk(full) || !quadOk(base)) { S.quad = full; return; }
+    // too far: stop at the furthest position that keeps the frame a real shape
+    var lo = 0, hi = 1, k;
+    for (k = 0; k < 22; k++) { var m = (lo + hi) / 2; if (quadOk(apply(m))) lo = m; else hi = m; }
+    S.quad = apply(lo);
   }
   function selIdx() { return S.sel.t === 'c' ? [S.sel.i] : [S.sel.i, (S.sel.i + 1) % 4]; }
   function afterChange() { if (S.prev) schedulePreview(); redraw(); }
@@ -535,15 +563,22 @@
     movePts(selIdx(), dx * S.step, dy * S.step);
     S.loupe = true; afterChange();
   }
+  var loupeTimer = null;
   function bindArrow(id, dx, dy) {
     var el = $(id), t1 = null, t2 = null, n = 0;
-    function stop() { clearTimeout(t1); clearInterval(t2); t1 = t2 = null; n = 0; S.loupe = false; redraw(); }
+    function stop() {
+      clearTimeout(t1); clearInterval(t2); t1 = t2 = null; n = 0;
+      clearTimeout(loupeTimer); loupeTimer = setTimeout(function () { S.loupe = false; redraw(); }, 800);
+    }
     el.addEventListener('pointerdown', function (e) {
       e.preventDefault();
+      if (el.disabled) return;
+      clearTimeout(loupeTimer);
       nudge(dx, dy);
       t1 = setTimeout(function () {
-        t2 = setInterval(function () { n++; var k = n > 20 ? 3 : 1; for (var i = 0; i < k; i++) nudge(dx, dy); }, 70);
-      }, 380);
+        // slow repeat; 1 px steps speed up a little, 10 px steps never do
+        t2 = setInterval(function () { n++; var k = (S.step === 1 && n > 12) ? 2 : 1; for (var i = 0; i < k; i++) nudge(dx, dy); }, 90);
+      }, 450);
     });
     ['pointerup', 'pointerleave', 'pointercancel'].forEach(function (ev) { el.addEventListener(ev, stop); });
     el.addEventListener('contextmenu', function (e) { e.preventDefault(); });
