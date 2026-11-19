@@ -57,6 +57,22 @@
   .col2 .b, .col3 .b { height: 34px; }
   .r3 { display: flex; gap: 6px; margin-top: 6px; }
   .r3 .b { height: 40px; }
+  /* tune screen */
+  #twrap { position: relative; }
+  #tv { display: block; width: 100%; touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+  #sTune { padding: 6px 10px 0; }
+  .chips { display: flex; gap: 4px; overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch; touch-action: pan-x; scrollbar-width: none; }
+  .chips::-webkit-scrollbar { display: none; }
+  .dock .chips .b { flex: none; width: auto; padding: 0 10px; white-space: nowrap; }
+  .chips .dot { display: inline-block; width: 5px; height: 5px; background: var(--handle); margin-left: 6px; }
+  .sl2 { margin-top: 8px; }
+  .sl2 .h { display: flex; justify-content: space-between; align-items: baseline; font: 700 10px Helvetica, Arial, sans-serif; letter-spacing: .14em; color: var(--sub); }
+  .sl2 .h span:last-child { font: 13px "Courier New", monospace; color: var(--text); letter-spacing: 0; }
+  .trk2 { position: relative; height: 36px; touch-action: none; -webkit-user-select: none; user-select: none; }
+  .trk2 .ln { position: absolute; left: 8px; right: 8px; top: 17px; height: 1px; background: var(--track); }
+  .trk2 .zero { position: absolute; top: 10px; width: 1px; height: 15px; background: var(--track); }
+  .trk2 .fill { position: absolute; top: 16px; height: 3px; background: var(--text); }
+  .trk2 .th { position: absolute; top: 4px; width: 16px; height: 28px; background: var(--text); margin-left: -8px; }
   #cv { display: block; width: 100%; touch-action: none; -webkit-user-select: none; user-select: none; }
   .arrows svg { fill: var(--text); pointer-events: none; }
   .r90 svg { transform: rotate(90deg); } .r180 svg { transform: rotate(180deg); } .r270 svg { transform: rotate(270deg); }
@@ -118,7 +134,18 @@
         <div class="col2"><button class="b acc" id="st1">1 PX</button><button class="b" id="st10">10 PX</button></div>
         <div class="col3"><button class="b" id="resetBtn">RESET</button><button class="b" id="fullBtn">FULL IMAGE</button></div>
       </div>
-      <div class="r3"><button class="b" id="prevBtn" style="flex:1">PREVIEW</button><button class="b acc" id="nextBtn" style="flex:2">NEXT</button></div>
+      <div class="r3"><button class="b" id="prevBtn" style="flex:1">PREVIEW</button><button class="b" id="skipBtn" style="flex:1">SAVE</button><button class="b acc" id="nextBtn" style="flex:1.4">NEXT: TUNE</button></div>
+    </div>
+  </section>
+
+  <!-- TUNE -->
+  <section id="sTune" class="hide">
+    <div class="card" id="twrap"><canvas id="tv"></canvas></div>
+    <div class="dock" id="tdock">
+      <div class="chips" id="chips"></div>
+      <div class="sl2"><div class="h"><span id="slName">EXPOSURE</span><span id="slVal">0</span></div>
+        <div class="trk2" id="slTrk"><div class="ln"></div><div class="zero" id="slZero"></div><div class="fill" id="slFill"></div><div class="th" id="slTh"></div></div></div>
+      <div class="r3"><button class="b" id="undoBtn" style="flex:1">UNDO ALL</button><button class="b" id="tBackBtn" style="flex:1">BACK</button><button class="b acc" id="tNextBtn" style="flex:2">NEXT</button></div>
     </div>
   </section>
 
@@ -154,7 +181,8 @@
     drag: null, finger: null, loupe: false,
     prev: false, prevCanvas: null, prevTimer: null,
     blob: null, outW: 0, outH: 0, token: 0, thumbUrl: null,
-    geo: { cw: 300, ch: 400, s: 1, ox: 0, oy: 0 }
+    geo: { cw: 300, ch: 400, s: 1, ox: 0, oy: 0 },
+    adj: {}, tool: 'exposure', tuneBase: null, ttoken: 0, tholding: false, tgeo: null, from: 'sCorners', tcache: null, tcacheKey: ''
   };
   var MAXL = 4096, MAXA = 12500000, PAD = 14, ZOOM = 4, LR = 58;
 
@@ -167,7 +195,7 @@
     var st = $('status'); st.textContent = msg || ''; st.className = kind || '';
     clearTimeout(statusTimer);
     $('statusWrap').classList.toggle('empty', !msg && typeof prog !== 'number');
-    if (msg && kind === 'ok' && !$('sCorners').classList.contains('hide')) {
+    if (msg && kind === 'ok' && document.body.classList.contains('fixed')) {
       statusTimer = setTimeout(function () { $('statusWrap').classList.add('empty'); }, 5000);
     }
     var bar = $('bar');
@@ -175,12 +203,13 @@
     else { bar.style.display = 'none'; }
   }
   function show(id) {
-    ['sStart', 'sCorners', 'sSave'].forEach(function (s) { $(s).classList.toggle('hide', s !== id); });
-    $('stepLbl').textContent = id === 'sStart' ? 'OPEN A PHOTO' : id === 'sCorners' ? 'STEP 1 OF 2' : 'STEP 2 OF 2';
-    document.body.classList.toggle('fixed', id === 'sCorners');
+    ['sStart', 'sCorners', 'sTune', 'sSave'].forEach(function (s) { $(s).classList.toggle('hide', s !== id); });
+    $('stepLbl').textContent = id === 'sStart' ? 'OPEN A PHOTO' : id === 'sCorners' ? 'STEP 1 OF 3' : id === 'sTune' ? 'STEP 2 OF 3' : 'STEP 3 OF 3';
+    document.body.classList.toggle('fixed', id === 'sCorners' || id === 'sTune');
     $('newTop').classList.toggle('hide', id === 'sStart');
     window.scrollTo(0, 0);
     if (id === 'sCorners') { layout(); redraw(); }
+    if (id === 'sTune') { layoutTune(); renderTune(); }
   }
   function applyTheme() {
     document.body.setAttribute('data-theme', T.dark ? 'dark' : 'light');
@@ -224,6 +253,7 @@
         S.quad = S.quad0.map(function (p) { return { x: p.x, y: p.y }; });
         S.sel = { t: 'c', i: 0 }; S.prev = false; S.prevCanvas = null; S.drag = null; S.loupe = false; S.blob = null;
         S.exif = null; S.exifState = '';
+        zeroAdj(); S.tool = 'exposure'; S.tuneBase = null; S.from = 'sCorners';
         readExif(f);
         var msg = 'Loaded ' + w + ' x ' + h + ' px.';
         if (sc < 1) msg += ' Reduced to ' + cw + ' x ' + ch + ' to fit the iPhone.';
@@ -317,20 +347,31 @@
     }
     return solve(A, b);
   }
-  function warpAsync(srcData, quad, ow, oh, prog, token) {
+  // rot (optional): { a: angle in radians, fw, fh: size of the squared-up frame before turning }; ow, oh is the trimmed output size
+  function rotCrop(fw, fh, a) {
+    var c = Math.abs(Math.cos(a)), s = Math.abs(Math.sin(a));
+    var k = Math.min(fw / (fw * c + fh * s), fh / (fw * s + fh * c));
+    if (k > 1) k = 1;
+    return { w: Math.max(8, Math.round(fw * k)), h: Math.max(8, Math.round(fh * k)) };
+  }
+  function warpAsync(srcData, quad, ow, oh, prog, token, rot) {
     var sw = srcData.width, sh = srcData.height, sd = srcData.data;
-    var dst = [{ x: 0, y: 0 }, { x: ow - 1, y: 0 }, { x: ow - 1, y: oh - 1 }, { x: 0, y: oh - 1 }];
+    var fw = rot ? rot.fw : ow, fh = rot ? rot.fh : oh, ca = rot ? Math.cos(rot.a) : 1, sa = rot ? Math.sin(rot.a) : 0;
+    var cxo = (ow - 1) / 2, cyo = (oh - 1) / 2, cxf = (fw - 1) / 2, cyf = (fh - 1) / 2;
+    var dst = [{ x: 0, y: 0 }, { x: fw - 1, y: 0 }, { x: fw - 1, y: fh - 1 }, { x: 0, y: fh - 1 }];
     var h = homography(dst, quad);
     var out = new ImageData(ow, oh), od = out.data;
     var row = 0, CH = Math.max(4, Math.floor(300000 / ow));
     return new Promise(function (res, rej) {
       function step() {
-        if (token !== undefined && token !== S.token) { rej(new Error('cancelled')); return; }
+        if (typeof token === 'function' ? !token() : (token !== undefined && token !== S.token)) { rej(new Error('cancelled')); return; }
         var end = Math.min(oh, row + CH);
         for (var v = row; v < end; v++) {
           for (var u = 0; u < ow; u++) {
-            var d = h[6] * u + h[7] * v + 1;
-            var X = (h[0] * u + h[1] * v + h[2]) / d, Y = (h[3] * u + h[4] * v + h[5]) / d;
+            var xf = u, yf = v;
+            if (rot) { var du = u - cxo, dv = v - cyo; xf = cxf + ca * du + sa * dv; yf = cyf - sa * du + ca * dv; }
+            var d = h[6] * xf + h[7] * yf + 1;
+            var X = (h[0] * xf + h[1] * yf + h[2]) / d, Y = (h[3] * xf + h[4] * yf + h[5]) / d;
             if (X < 0) X = 0; else if (X > sw - 1) X = sw - 1;
             if (Y < 0) Y = 0; else if (Y > sh - 1) Y = sh - 1;
             var x0 = X | 0, y0 = Y | 0, x1 = x0 + 1 < sw ? x0 + 1 : x0, y1 = y0 + 1 < sh ? y0 + 1 : y0;
@@ -370,7 +411,11 @@
     var s = Math.min((wrapW - PAD * 2) / S.W, (ch - PAD * 2) / S.H);
     S.geo = { cw: wrapW, ch: ch, s: s, ox: (wrapW - S.W * s) / 2, oy: (ch - S.H * s) / 2, dpr: dpr };
   }
-  function relayout() { if (S.src && !$('sCorners').classList.contains('hide')) { layout(); redraw(); } }
+  function relayout() {
+    if (!S.src) return;
+    if (!$('sCorners').classList.contains('hide')) { layout(); redraw(); }
+    else if (!$('sTune').classList.contains('hide')) { layoutTune(); renderTune(); }
+  }
   window.addEventListener('resize', relayout);
   if (window.visualViewport) window.visualViewport.addEventListener('resize', relayout);
   function toD(p) { return { x: S.geo.ox + p.x * S.geo.s, y: S.geo.oy + p.y * S.geo.s }; }
@@ -614,9 +659,296 @@
     }).catch(function () {});
   }
 
+  // ---------- tune screen
+  var TOOLS = [
+    { k: 'exposure', n: 'EXPOSURE', min: -100, max: 100, st: 1, note: 'Overall brightness.' },
+    { k: 'contrast', n: 'CONTRAST', min: -100, max: 100, st: 1, note: 'Separates lights from darks.' },
+    { k: 'highlights', n: 'HIGHLIGHTS', min: -100, max: 100, st: 1, note: 'Left recovers bright areas.' },
+    { k: 'shadows', n: 'SHADOWS', min: -100, max: 100, st: 1, note: 'Right opens up dark areas.' },
+    { k: 'warmth', n: 'WARMTH', min: -100, max: 100, st: 1, note: 'Right is warmer, left is cooler.' },
+    { k: 'tint', n: 'TINT', min: -100, max: 100, st: 1, note: 'Right is magenta, left is green.' },
+    { k: 'saturation', n: 'SATURATION', min: -100, max: 100, st: 1, note: 'Colour strength.' },
+    { k: 'sharpness', n: 'SHARPNESS', min: 0, max: 100, st: 1, note: 'Applied to the full photo on save. Preview is approximate.' },
+    { k: 'noise', n: 'NOISE', min: 0, max: 100, st: 1, note: 'Smooths grain. Applied to the full photo on save. Preview is approximate.' },
+    { k: 'straighten', n: 'STRAIGHTEN', min: -10, max: 10, st: 0.1, note: 'Turns the photo up to 10 degrees. Edges are trimmed so no blank corners show.' }
+  ];
+  function toolOf(k) { for (var i = 0; i < TOOLS.length; i++) if (TOOLS[i].k === k) return TOOLS[i]; return TOOLS[0]; }
+  function zeroAdj() { TOOLS.forEach(function (t) { S.adj[t.k] = 0; }); }
+  function isFlat(a) { return TOOLS.every(function (t) { return !a[t.k]; }); }
+  function toneOn(a) { return !!(a.exposure || a.contrast || a.highlights || a.shadows || a.warmth || a.tint || a.saturation); }
+  zeroAdj();
+
+  function toneParams(a) {
+    return {
+      em: Math.pow(2, a.exposure / 100 * 1.5),
+      rm: 1 + 0.15 * a.warmth / 100 + 0.04 * a.tint / 100,
+      gm: 1 - 0.10 * a.tint / 100,
+      bm: 1 - 0.15 * a.warmth / 100 + 0.04 * a.tint / 100,
+      hi: a.highlights / 100 * 0.35, sh: a.shadows / 100 * 0.35,
+      cf: 1 + a.contrast / 100 * 0.8, sa: Math.max(0, 1 + a.saturation / 100)
+    };
+  }
+  function toneRows(d, w, y0, y1, P) {
+    var i = y0 * w * 4, end = y1 * w * 4, r, g, b, Y, dl, om;
+    for (; i < end; i += 4) {
+      r = d[i] / 255 * P.em * P.rm; g = d[i + 1] / 255 * P.em * P.gm; b = d[i + 2] / 255 * P.em * P.bm;
+      if (P.hi || P.sh) {
+        Y = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+        if (Y < 0) Y = 0; if (Y > 1) Y = 1;
+        om = 1 - Y;
+        dl = P.sh * om * om + P.hi * Y * Y;
+        r += dl; g += dl; b += dl;
+      }
+      if (P.cf !== 1) { r = (r - 0.5) * P.cf + 0.5; g = (g - 0.5) * P.cf + 0.5; b = (b - 0.5) * P.cf + 0.5; }
+      if (P.sa !== 1) {
+        Y = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+        r = Y + (r - Y) * P.sa; g = Y + (g - Y) * P.sa; b = Y + (b - Y) * P.sa;
+      }
+      d[i] = r * 255; d[i + 1] = g * 255; d[i + 2] = b * 255;
+    }
+  }
+  // run fn over row ranges; yields to the screen between chunks unless sync
+  function chunked(h, per, fn, sync, alive, prog) {
+    return new Promise(function (res, rej) {
+      var y = 0;
+      function go() {
+        if (alive && !alive()) { rej(new Error('cancelled')); return; }
+        var t = Date.now();
+        do { var y1 = Math.min(h, y + per); fn(y, y1); y = y1; } while (y < h && (sync || Date.now() - t < 30));
+        if (prog) prog(y / h);
+        if (y < h) setTimeout(go, 0); else res();
+      }
+      go();
+    });
+  }
+  function boxBlur(src, w, h, r, sync, alive, prog) {
+    var tmp = new Uint8ClampedArray(src.length), out = new Uint8ClampedArray(src.length), n = 2 * r + 1;
+    var sums = new Int32Array(w * 3), k, x, c, y0;
+    return chunked(h, 32, function (ya, yb) {
+      for (var y = ya; y < yb; y++) {
+        var row = y * w * 4;
+        for (c = 0; c < 3; c++) {
+          var sum = 0;
+          for (k = -r; k <= r; k++) sum += src[row + Math.min(w - 1, Math.max(0, k)) * 4 + c];
+          for (x = 0; x < w; x++) {
+            tmp[row + x * 4 + c] = (sum / n) | 0;
+            sum += src[row + Math.min(w - 1, x + r + 1) * 4 + c] - src[row + Math.max(0, x - r) * 4 + c];
+          }
+        }
+      }
+    }, sync, alive, prog ? function (f) { prog(f * 0.5); } : null).then(function () {
+      for (k = -r; k <= r; k++) {
+        var ro = Math.min(h - 1, Math.max(0, k)) * w * 4;
+        for (x = 0; x < w; x++) { sums[x * 3] += tmp[ro + x * 4]; sums[x * 3 + 1] += tmp[ro + x * 4 + 1]; sums[x * 3 + 2] += tmp[ro + x * 4 + 2]; }
+      }
+      return chunked(h, 32, function (ya, yb) {
+        for (var y = ya; y < yb; y++) {
+          var o = y * w * 4, ad = Math.min(h - 1, y + r + 1) * w * 4, sb = Math.max(0, y - r) * w * 4;
+          for (x = 0; x < w; x++) {
+            var q = x * 3, j = o + x * 4;
+            out[j] = (sums[q] / n) | 0; out[j + 1] = (sums[q + 1] / n) | 0; out[j + 2] = (sums[q + 2] / n) | 0; out[j + 3] = 255;
+            sums[q] += tmp[ad + x * 4] - tmp[sb + x * 4];
+            sums[q + 1] += tmp[ad + x * 4 + 1] - tmp[sb + x * 4 + 1];
+            sums[q + 2] += tmp[ad + x * 4 + 2] - tmp[sb + x * 4 + 2];
+          }
+        }
+      }, sync, alive, prog ? function (f) { prog(0.5 + f * 0.5); } : null);
+    }).then(function () { return out; });
+  }
+  // img: ImageData already warped. o: { scale, sync, alive, prog(label, frac) }
+  function processImage(img, a, o) {
+    var d = img.data, w = img.width, h = img.height, p = Promise.resolve();
+    var pg = function (label) { return o.prog ? function (f) { o.prog(label, f); } : null; };
+    if (toneOn(a)) {
+      var P = toneParams(a);
+      p = p.then(function () { return chunked(h, 64, function (y0, y1) { toneRows(d, w, y0, y1, P); }, o.sync, o.alive, pg('Adjusting tone')); });
+    }
+    if (a.noise > 0) {
+      var nn = a.noise / 100, r = Math.max(1, Math.min(6, Math.round(o.scale * (0.6 + nn * 1.6)))), T = 6 + nn * 22, amt = Math.min(1, nn / 0.6);
+      p = p.then(function () { return boxBlur(d, w, h, r, o.sync, o.alive, pg('Reducing noise')); }).then(function (B) {
+        return chunked(h, 64, function (y0, y1) {
+          for (var i = y0 * w * 4, end = y1 * w * 4; i < end; i += 4) {
+            var dr = B[i] - d[i], dg = B[i + 1] - d[i + 1], db = B[i + 2] - d[i + 2];
+            var dy = 0.2126 * dr + 0.7152 * dg + 0.0722 * db, q = dy / T, wt = amt * Math.exp(-q * q);
+            d[i] += dr * wt; d[i + 1] += dg * wt; d[i + 2] += db * wt;
+          }
+        }, o.sync, o.alive, null);
+      });
+    }
+    if (a.sharpness > 0) {
+      var rs = Math.max(1, Math.round(o.scale * 0.8)), am = a.sharpness / 100 * 1.3;
+      p = p.then(function () { return boxBlur(d, w, h, rs, o.sync, o.alive, pg('Sharpening')); }).then(function (B) {
+        return chunked(h, 64, function (y0, y1) {
+          for (var i = y0 * w * 4, end = y1 * w * 4; i < end; i += 4) {
+            d[i] += (d[i] - B[i]) * am; d[i + 1] += (d[i + 1] - B[i + 1]) * am; d[i + 2] += (d[i + 2] - B[i + 2]) * am;
+          }
+        }, o.sync, o.alive, null);
+      });
+    }
+    return p.then(function () { return img; });
+  }
+
+  // ---- tune geometry, preview bases
+  var tv = $('tv'), tctx = tv.getContext('2d');
+  function layoutTune() {
+    if (!S.src) return;
+    var wrapW = $('twrap').clientWidth || 340;
+    var vh = (window.visualViewport && window.visualViewport.height) || window.innerHeight;
+    var top = $('twrap').getBoundingClientRect().top;
+    var botPad = parseFloat(getComputedStyle(document.body).paddingBottom) || 0;
+    var maxH = Math.max(160, Math.floor(vh - top - $('tdock').offsetHeight - botPad - 6));
+    var asp = S.taspect || (S.W / S.H);
+    var ch = Math.round(clamp(((wrapW - PAD * 2) / asp) + PAD * 2, 120, maxH));
+    var dpr = window.devicePixelRatio || 1;
+    tv.style.height = ch + 'px';
+    tv.width = Math.round(wrapW * dpr); tv.height = Math.round(ch * dpr);
+    S.tgeo = { cw: wrapW, ch: ch, dpr: dpr };
+  }
+  function previewQuad() { return S.quad.map(function (p) { return { x: p.x * S.pscale, y: p.y * S.pscale }; }); }
+  function baseFor(angle, tk) {
+    var q = previewQuad(), o = outSize(q, 700), a = angle * Math.PI / 180;
+    var c = a ? rotCrop(o.w, o.h, a) : o;
+    return warpAsync(S.proxyData, q, c.w, c.h, null, tk, a ? { a: a, fw: o.w, fh: o.h } : null);
+  }
+  function enterTune() {
+    S.prev = false; $('prevBtn').classList.remove('acc');
+    S.from = 'sCorners'; S.token++;
+    var o = outSize(previewQuad(), 700); S.taspect = o.w / o.h;
+    S.tbase = null; S.tbase0 = null; S.tkey = '';
+    show('sTune');
+    buildBases();
+  }
+  function buildBases() {
+    var tk = ++S.ttoken, ang = Math.round(S.adj.straighten * 10) / 10;
+    var need0 = !S.tbase0;
+    var alive = function () { return tk === S.ttoken; };
+    var p0 = need0 ? baseFor(0, alive) : Promise.resolve(S.tbase0);
+    var p1 = ang ? p0.then(function () { return baseFor(ang, alive); }) : p0;
+    Promise.all([p0, p1]).then(function (r) {
+      if (!alive()) return;
+      S.tbase0 = r[0]; S.tbase = r[1]; S.tbaseAng = ang;
+      var asp = S.tbase.width / S.tbase.height;
+      if (Math.abs(asp - S.taspect) > 0.002) { S.taspect = asp; layoutTune(); }
+      renderTune();
+    }).catch(function () {});
+  }
+  var rafPending = false;
+  function scheduleRender() { if (rafPending) return; rafPending = true; requestAnimationFrame(function () { rafPending = false; renderTune(); }); }
+  function drawTune(img) {
+    var g = S.tgeo; if (!g) return;
+    tctx.setTransform(g.dpr, 0, 0, g.dpr, 0, 0);
+    tctx.clearRect(0, 0, g.cw, g.ch);
+    if (!img) return;
+    if (!S.tcanvas) S.tcanvas = document.createElement('canvas');
+    var c = S.tcanvas; c.width = img.width; c.height = img.height; c.getContext('2d').putImageData(img, 0, 0);
+    var s = Math.min((g.cw - PAD * 2) / img.width, (g.ch - PAD * 2) / img.height);
+    var w = img.width * s, h = img.height * s;
+    tctx.imageSmoothingQuality = 'high';
+    tctx.drawImage(c, (g.cw - w) / 2, (g.ch - h) / 2, w, h);
+  }
+  function renderTune() {
+    if (!S.tbase) { drawTune(null); return; }
+    var rk = ++S.rtk;
+    if (S.tholding) { drawTune(S.tbase0); return; }
+    var base = S.tbase, copy = new ImageData(new Uint8ClampedArray(base.data), base.width, base.height);
+    processImage(copy, S.adj, { scale: Math.max(base.width, base.height) / 1000, sync: true, alive: function () { return rk === S.rtk; } })
+      .then(drawTune).catch(function () {});
+  }
+  S.rtk = 0;
+
+  // ---- tool chips + slider
+  var chipsEl = $('chips');
+  function buildChips() {
+    var b = document.createElement('button'); b.className = 'b'; b.textContent = 'AUTO FIX'; b.id = 'autoBtn';
+    b.addEventListener('click', autoFix); chipsEl.appendChild(b);
+    TOOLS.forEach(function (t) {
+      var c = document.createElement('button'); c.className = 'b'; c.setAttribute('data-k', t.k); c.id = 'chip_' + t.k;
+      c.innerHTML = t.n + '<span class="dot" style="display:none"></span>';
+      c.addEventListener('click', function () {
+        if (S.tool === t.k) { S.adj[t.k] = 0; updateTuneUI(); afterTune(t.k); }
+        else { S.tool = t.k; updateTuneUI(); setStatus(t.note, 'ok'); }
+      });
+      chipsEl.appendChild(c);
+    });
+  }
+  function fmtVal(t, v) { return t.k === 'straighten' ? (v > 0 ? '+' : '') + v.toFixed(1) + ' deg' : (t.min < 0 && v > 0 ? '+' : '') + Math.round(v); }
+  function updateTuneUI() {
+    var t = toolOf(S.tool), v = S.adj[t.k], trk = $('slTrk'), W = trk.clientWidth || 300;
+    TOOLS.forEach(function (x) {
+      var c = $('chip_' + x.k); c.classList.toggle('acc', x.k === S.tool);
+      c.querySelector('.dot').style.display = S.adj[x.k] ? 'inline-block' : 'none';
+    });
+    $('slName').textContent = t.n; $('slVal').textContent = fmtVal(t, v);
+    var L = 8, span = Math.max(1, W - 16), f = (v - t.min) / (t.max - t.min), z = (0 - t.min) / (t.max - t.min);
+    $('slTh').style.left = (L + f * span) + 'px';
+    $('slZero').style.left = (L + z * span) + 'px';
+    var a = Math.min(f, z), b = Math.max(f, z);
+    $('slFill').style.left = (L + a * span) + 'px'; $('slFill').style.width = ((b - a) * span) + 'px';
+    var act = $('chip_' + S.tool); if (act && act.scrollIntoView && chipsEl.scrollWidth > chipsEl.clientWidth) {
+      var cl = act.offsetLeft, cr = cl + act.offsetWidth;
+      if (cl < chipsEl.scrollLeft) chipsEl.scrollLeft = cl - 6; else if (cr > chipsEl.scrollLeft + chipsEl.clientWidth) chipsEl.scrollLeft = cr - chipsEl.clientWidth + 6;
+    }
+  }
+  var angTimer = null;
+  function afterTune(k) {
+    if (k === 'straighten') { clearTimeout(angTimer); angTimer = setTimeout(buildBases, 60); } else scheduleRender();
+  }
+  (function () {
+    var trk = $('slTrk'), on = false;
+    function setX(x) {
+      var t = toolOf(S.tool), r = trk.getBoundingClientRect();
+      var f = clamp((x - r.left - 8) / Math.max(1, r.width - 16), 0, 1);
+      var v = t.min + f * (t.max - t.min);
+      v = Math.round(v / t.st) * t.st; v = Math.round(v * 10) / 10;
+      if (t.min < 0 && Math.abs(v) <= (t.max - t.min) * 0.012) v = 0;
+      if (v === S.adj[t.k]) return;
+      S.adj[t.k] = v; updateTuneUI(); afterTune(t.k);
+    }
+    trk.addEventListener('pointerdown', function (e) { on = true; try { trk.setPointerCapture(e.pointerId); } catch (x) {} setX(e.clientX); e.preventDefault(); });
+    trk.addEventListener('pointermove', function (e) { if (on) setX(e.clientX); });
+    ['pointerup', 'pointercancel'].forEach(function (ev) { trk.addEventListener(ev, function () { on = false; }); });
+  })();
+  buildChips();
+
+  function autoFix() {
+    if (!S.tbase0) return;
+    var d = S.tbase0.data, hist = new Uint32Array(256), n = 0, mr = 0, mg = 0, mb = 0, my = 0;
+    for (var i = 0; i < d.length; i += 16) {
+      var y = (0.2126 * d[i] + 0.7152 * d[i + 1] + 0.0722 * d[i + 2]) | 0;
+      hist[y]++; n++; mr += d[i]; mg += d[i + 1]; mb += d[i + 2]; my += y;
+    }
+    mr /= n; mg /= n; mb /= n; my /= n;
+    var lo = 0, hi = 255, acc = 0;
+    for (var k = 0; k < 256; k++) { acc += hist[k]; if (acc >= n * 0.01) { lo = k; break; } }
+    acc = 0;
+    for (k = 255; k >= 0; k--) { acc += hist[k]; if (acc >= n * 0.01) { hi = k; break; } }
+    var stops = Math.log(clamp(0.46 * 255 / Math.max(10, my), 0.5, 2)) / Math.LN2;
+    S.adj.exposure = Math.round(clamp(stops / 1.5 * 100 * 0.8, -60, 60));
+    var spread = Math.max(40, hi - lo) / 255;
+    S.adj.contrast = Math.round(clamp((0.92 / spread - 1) / 0.8 * 100 * 0.6, -20, 50));
+    S.adj.warmth = Math.round(clamp((mb - mr) / (0.15 * Math.max(1, mb + mr)) * 100 * 0.4, -40, 40));
+    S.tool = 'exposure'; updateTuneUI(); scheduleRender();
+    setStatus('Auto fix set exposure, contrast and warmth. All still adjustable.', 'ok');
+  }
+  $('undoBtn').addEventListener('click', function () {
+    var hadAng = !!S.adj.straighten; zeroAdj(); updateTuneUI();
+    if (hadAng) buildBases(); else scheduleRender();
+  });
+  $('tBackBtn').addEventListener('click', function () { S.ttoken++; S.rtk++; show('sCorners'); setStatus(''); });
+  $('tNextBtn').addEventListener('click', function () { S.from = 'sTune'; show('sSave'); buildOutput(); });
+  (function () {
+    function hold(v) { return function (e) { S.tholding = v; if (v) { try { tv.setPointerCapture(e.pointerId); } catch (x) {} } renderTune(); }; }
+    tv.addEventListener('pointerdown', hold(true));
+    ['pointerup', 'pointercancel'].forEach(function (ev) { tv.addEventListener(ev, hold(false)); });
+    tv.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+  })();
+  var _show = show;
+  show = function (id) { _show(id); if (id === 'sTune') updateTuneUI(); };
+
   // ---------- save screen
-  $('nextBtn').addEventListener('click', function () { S.prev = false; $('prevBtn').classList.remove('acc'); show('sSave'); buildOutput(); });
-  $('backBtn').addEventListener('click', function () { S.token++; show('sCorners'); setStatus(''); });
+  $('nextBtn').addEventListener('click', enterTune);
+  $('skipBtn').addEventListener('click', function () { S.prev = false; $('prevBtn').classList.remove('acc'); S.from = 'sCorners'; show('sSave'); buildOutput(); });
+  $('backBtn').addEventListener('click', function () { S.token++; show(S.from || 'sCorners'); setStatus(''); });
   function buildOutput() {
     var tk = ++S.token;
     S.blob = null; $('shareBtn').disabled = true; $('dlBtn').disabled = true;
@@ -625,11 +957,21 @@
     $('thumb').removeAttribute('src');
     if (S.thumbUrl) { URL.revokeObjectURL(S.thumbUrl); S.thumbUrl = null; }
     var o = outSize(S.quad, MAXL);
-    S.outW = o.w; S.outH = o.h;
+    var ang = (S.adj.straighten || 0) * Math.PI / 180;
+    var oc = ang ? rotCrop(o.w, o.h, ang) : o;
+    S.outW = oc.w; S.outH = oc.h;
     setStatus('Squaring up the photo...', '', 0);
     var sd = S.src.getContext('2d').getImageData(0, 0, S.W, S.H);
-    warpAsync(sd, S.quad, o.w, o.h, function (f) { setStatus('Squaring up the photo... ' + Math.round(f * 100) + '%', '', f); }, tk).then(function (img) {
-      var c = document.createElement('canvas'); c.width = o.w; c.height = o.h; c.getContext('2d').putImageData(img, 0, 0);
+    var flat = isFlat(S.adj), adj = {};
+    TOOLS.forEach(function (t) { adj[t.k] = S.adj[t.k]; });
+    var alive = function () { return tk === S.token; };
+    warpAsync(sd, S.quad, oc.w, oc.h, function (f) { setStatus('Squaring up the photo... ' + Math.round(f * 100) + '%', '', f); }, tk, ang ? { a: ang, fw: o.w, fh: o.h } : null).then(function (img) {
+      sd = null;
+      if (flat) return img;
+      return processImage(img, adj, { scale: Math.min(6, Math.max(oc.w, oc.h) / 1000), sync: false, alive: alive,
+        prog: function (label, f) { setStatus(label + '... ' + Math.round(f * 100) + '%', '', f); } });
+    }).then(function (img) {
+      var c = document.createElement('canvas'); c.width = oc.w; c.height = oc.h; c.getContext('2d').putImageData(img, 0, 0);
       setStatus('Saving JPEG...', '', 1);
       c.toBlob(function (blob) {
         if (tk !== S.token) return;
@@ -683,7 +1025,7 @@
   applyTheme();
   show('sStart');
   // test hook (harmless on the phone)
-  window.__IC = { S: S, loadFile: loadFile, warpAsync: warpAsync, homography: homography, outSize: outSize };
+  window.__IC = { S: S, loadFile: loadFile, warpAsync: warpAsync, homography: homography, outSize: outSize, processImage: processImage, rotCrop: rotCrop, enterTune: enterTune, TOOLS: TOOLS };
 })();
 </script>
 </body>
