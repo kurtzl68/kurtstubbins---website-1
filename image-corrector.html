@@ -1,0 +1,648 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="robots" content="noindex, nofollow">
+<meta name="apple-mobile-web-app-title" content="Image Corrector">
+<title>IMAGE CORRECTOR</title>
+<style>
+  :root, body[data-theme="dark"] {
+    --bg:#1A1A1A; --card:#252525; --border:#333333; --text:#E8E5DF; --label:#B8B3AB; --sub:#CFCAC2;
+    --accbg:#E8E5DF; --accfg:#1A1A1A; --btn:#2E2E2E; --ok:#7DBF8E; --err:#D4845A; --handle:#D4845A; --track:#8A857E;
+  }
+  body[data-theme="light"] {
+    --bg:#E8E5DF; --card:#FFFFFF; --border:#D0CCC4; --text:#1A1A1A; --label:#4A4742; --sub:#3A3835;
+    --accbg:#1A1A1A; --accfg:#FFFFFF; --btn:#FFFFFF; --ok:#3F6B4C; --err:#8A431F; --handle:#A0522D; --track:#6B665F;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  html, body { background: var(--bg); color: var(--text); font-family: Georgia, serif; -webkit-text-size-adjust: 100%; }
+  body { padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
+  #app { max-width: 480px; margin: 0 auto; min-height: 100vh; }
+  .top { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; border-bottom: 1px solid var(--border); }
+  .top b { font: 700 13px Helvetica, Arial, sans-serif; letter-spacing: .14em; }
+  .top button { background: none; border: 0; color: var(--text); padding: 6px; }
+  .step { font: 700 11px Helvetica, Arial, sans-serif; letter-spacing: .14em; color: var(--label); padding: 10px 14px 6px; }
+  .pad { padding: 0 14px 18px; }
+  .mono { font: 12px "Courier New", monospace; color: var(--sub); }
+  .lbl { font: 700 11px Helvetica, Arial, sans-serif; letter-spacing: .14em; color: var(--label); margin: 12px 0 6px; }
+  .card { background: var(--card); border: 1px solid var(--border); }
+  .b { display: block; width: 100%; background: var(--btn); color: var(--text); border: 1px solid var(--border); border-radius: 0;
+       font: 700 12px Helvetica, Arial, sans-serif; letter-spacing: .08em; padding: 12px 6px; text-align: center; cursor: pointer;
+       -webkit-appearance: none; appearance: none; touch-action: manipulation; user-select: none; -webkit-user-select: none; }
+  .b.acc { background: var(--accbg); color: var(--accfg); border-color: var(--accbg); }
+  .b[disabled] { opacity: .45; }
+  .grid { display: flex; gap: 6px; }
+  .grid > * { flex: 1; }
+  .gap6 { margin-top: 6px; }
+  #cwrap { position: relative; }
+  #cv { display: block; width: 100%; touch-action: none; -webkit-user-select: none; user-select: none; }
+  .arrows { display: grid; grid-template-columns: 52px 52px 52px; grid-template-rows: 46px 46px 46px; gap: 5px; justify-content: center; }
+  .arrows .b { display: flex; align-items: center; justify-content: center; padding: 0; }
+  .arrows svg { fill: var(--text); pointer-events: none; }
+  .r90 svg { transform: rotate(90deg); } .r180 svg { transform: rotate(180deg); } .r270 svg { transform: rotate(270deg); }
+  .nrow { display: flex; gap: 10px; align-items: center; }
+  .hide { display: none !important; }
+  #statusWrap { padding: 8px 14px 0; min-height: 34px; }
+  #status { font: 12px "Courier New", monospace; color: var(--sub); }
+  #status.err { color: var(--err); } #status.ok { color: var(--ok); }
+  #bar { height: 3px; background: var(--border); margin-top: 5px; display: none; }
+  #bar i { display: block; height: 3px; width: 0; background: var(--text); }
+  .field { background: var(--card); border: 1px solid var(--border); padding: 11px 10px; width: 100%; color: var(--text); font: 13px "Courier New", monospace; border-radius: 0; -webkit-appearance: none; }
+  .note { border-left: 2px solid var(--label); padding: 4px 10px; margin-top: 12px; font-size: 14px; line-height: 1.45; }
+  .note.warn { border-left-color: var(--err); }
+  #thumb { max-width: 100%; max-height: 260px; display: block; margin: 0 auto; }
+  .rule { height: 1px; background: var(--border); margin: 14px 0; }
+  h2 { font: 700 13px Helvetica, Arial, sans-serif; letter-spacing: .14em; }
+  p.body { font-size: 15px; line-height: 1.5; color: var(--sub); margin: 8px 0 14px; }
+</style>
+</head>
+<body data-theme="dark">
+<div id="app">
+  <div class="top">
+    <b>IMAGE CORRECTOR</b>
+    <button id="themeBtn" aria-label="Light or dark">
+      <svg width="18" height="18" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.5" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M8 1.5 A6.5 6.5 0 0 1 8 14.5 Z" fill="currentColor"/></svg>
+    </button>
+  </div>
+  <div class="step" id="stepLbl">OPEN A PHOTO</div>
+  <div id="statusWrap"><div id="status"></div><div id="bar"><i></i></div></div>
+
+  <!-- START -->
+  <section id="sStart" class="pad">
+    <p class="body">Square up a photo of a painting, a wall or a page. Open a photo, set the four corners, and save a corrected copy. The original is never changed.</p>
+    <button class="b acc" id="openBtn">OPEN PHOTO</button>
+    <input type="file" id="fileIn" accept="image/*" class="hide">
+  </section>
+
+  <!-- CORNERS -->
+  <section id="sCorners" class="pad hide">
+    <div class="card" id="cwrap"><canvas id="cv"></canvas></div>
+    <div class="mono" id="readout" style="margin-top:6px">&nbsp;</div>
+    <div class="mono" id="outinfo">&nbsp;</div>
+
+    <div class="lbl">SELECT A CORNER OR AN EDGE</div>
+    <div class="grid">
+      <button class="b" id="sel_c0">1</button><button class="b" id="sel_c1">2</button>
+      <button class="b" id="sel_c2">3</button><button class="b" id="sel_c3">4</button>
+    </div>
+    <div class="grid gap6">
+      <button class="b" id="sel_e0">TOP</button><button class="b" id="sel_e1">RIGHT</button>
+      <button class="b" id="sel_e2">BOTTOM</button><button class="b" id="sel_e3">LEFT</button>
+    </div>
+
+    <div class="lbl">NUDGE</div>
+    <div class="nrow">
+      <div class="mono" id="moving" style="width:78px; line-height:1.5">MOVING<br>CORNER 1</div>
+      <div class="arrows" style="flex:1">
+        <div></div>
+        <button class="b" id="n_up"><svg width="16" height="16" viewBox="0 0 14 14"><path d="M7 3 L12 11 L2 11 Z"/></svg></button>
+        <div></div>
+        <button class="b r270" id="n_left"><svg width="16" height="16" viewBox="0 0 14 14"><path d="M7 3 L12 11 L2 11 Z"/></svg></button>
+        <div></div>
+        <button class="b r90" id="n_right"><svg width="16" height="16" viewBox="0 0 14 14"><path d="M7 3 L12 11 L2 11 Z"/></svg></button>
+        <div></div>
+        <button class="b r180" id="n_down"><svg width="16" height="16" viewBox="0 0 14 14"><path d="M7 3 L12 11 L2 11 Z"/></svg></button>
+        <div></div>
+      </div>
+      <div style="width:72px">
+        <div class="lbl" style="margin-top:0">STEP</div>
+        <button class="b acc" id="st1">1 PX</button>
+        <button class="b gap6" id="st10">10 PX</button>
+      </div>
+    </div>
+    <div class="mono" style="margin-top:6px; font-size:11px">HOLD AN ARROW TO REPEAT</div>
+
+    <div class="grid" style="margin-top:12px">
+      <button class="b" id="resetBtn">RESET</button>
+      <button class="b" id="fullBtn">FULL IMAGE</button>
+      <button class="b" id="prevBtn">PREVIEW</button>
+    </div>
+    <button class="b acc gap6" id="nextBtn">NEXT</button>
+    <button class="b gap6" id="newBtn1">NEW PHOTO</button>
+  </section>
+
+  <!-- SAVE -->
+  <section id="sSave" class="pad hide">
+    <div class="card" style="padding:12px"><img id="thumb" alt="Corrected photo preview"></div>
+    <div class="lbl">FILE NAME</div>
+    <input class="field" id="fname" type="text" autocapitalize="off" autocomplete="off" spellcheck="false">
+    <div class="lbl">OUTPUT</div>
+    <div class="mono" id="outtxt">&nbsp;</div>
+    <button class="b acc" id="shareBtn" style="margin-top:14px" disabled>SAVE VIA SHARE SHEET</button>
+    <button class="b gap6" id="dlBtn" disabled>DOWNLOAD TO FILES</button>
+    <button class="b gap6" id="backBtn">BACK TO CORNERS</button>
+    <button class="b gap6" id="newBtn2">NEW PHOTO</button>
+    <div class="note">This makes a new copy. Your original is not changed. Safari cannot save next to the original, so the copy goes to Photos or Files.</div>
+    <div class="note warn" id="exifNote">Date taken and location may not carry over.</div>
+  </section>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  var $ = function (id) { return document.getElementById(id); };
+
+  // ---------- state
+  var T = { dark: true };
+  try { if (localStorage.getItem('ic_theme') === 'light') T.dark = false; } catch (e) {}
+  var S = {
+    src: null, W: 0, H: 0, name: 'photo', exif: null, exifState: '',
+    proxy: null, proxyData: null, pscale: 1,
+    quad: null, quad0: null,
+    sel: { t: 'c', i: 0 }, step: 1,
+    drag: null, finger: null, loupe: false,
+    prev: false, prevCanvas: null, prevTimer: null,
+    blob: null, outW: 0, outH: 0, token: 0, thumbUrl: null,
+    geo: { cw: 300, ch: 400, s: 1, ox: 0, oy: 0 }
+  };
+  var MAXL = 4096, MAXA = 12500000, PAD = 22, ZOOM = 4, LR = 58;
+
+  // ---------- helpers
+  function css(v) { return getComputedStyle(document.body).getPropertyValue(v).trim(); }
+  function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
+  function dist(a, b) { return Math.sqrt((a.x - b.x) * (a.x - b.x) + (a.y - b.y) * (a.y - b.y)); }
+  function setStatus(msg, kind, prog) {
+    var st = $('status'); st.textContent = msg || ''; st.className = kind || '';
+    var bar = $('bar');
+    if (typeof prog === 'number') { bar.style.display = 'block'; bar.firstChild.style.width = Math.round(clamp(prog, 0, 1) * 100) + '%'; }
+    else { bar.style.display = 'none'; }
+  }
+  function show(id) {
+    ['sStart', 'sCorners', 'sSave'].forEach(function (s) { $(s).classList.toggle('hide', s !== id); });
+    $('stepLbl').textContent = id === 'sStart' ? 'OPEN A PHOTO' : id === 'sCorners' ? 'STEP 1 OF 2 - SET THE 4 CORNERS' : 'STEP 2 OF 2 - SAVE A COPY';
+    window.scrollTo(0, 0);
+    if (id === 'sCorners') { layout(); redraw(); }
+  }
+  function applyTheme() {
+    document.body.setAttribute('data-theme', T.dark ? 'dark' : 'light');
+    try { localStorage.setItem('ic_theme', T.dark ? 'dark' : 'light'); } catch (e) {}
+    if (S.src) redraw();
+  }
+  $('themeBtn').addEventListener('click', function () { T.dark = !T.dark; applyTheme(); });
+
+  // ---------- load
+  $('openBtn').addEventListener('click', function () { $('fileIn').click(); });
+  $('newBtn1').addEventListener('click', newPhoto);
+  $('newBtn2').addEventListener('click', newPhoto);
+  function newPhoto() { S.token++; $('fileIn').value = ''; $('fileIn').click(); }
+  $('fileIn').addEventListener('change', function () {
+    var f = this.files && this.files[0];
+    if (f) loadFile(f);
+  });
+
+  function loadFile(f) {
+    setStatus('Loading photo...', '', 0.1);
+    var url = URL.createObjectURL(f);
+    var img = new Image();
+    img.onload = function () {
+      try {
+        var w = img.naturalWidth, h = img.naturalHeight;
+        var sc = Math.min(1, MAXL / Math.max(w, h), Math.sqrt(MAXA / (w * h)));
+        var cw = Math.max(1, Math.round(w * sc)), ch = Math.max(1, Math.round(h * sc));
+        var c = document.createElement('canvas'); c.width = cw; c.height = ch;
+        c.getContext('2d').drawImage(img, 0, 0, cw, ch);
+        URL.revokeObjectURL(url);
+        S.src = c; S.W = cw; S.H = ch;
+        S.name = (f.name || 'photo').replace(/\.[^.]*$/, '') || 'photo';
+        var ps = Math.min(1, 1000 / Math.max(cw, ch));
+        var pc = document.createElement('canvas');
+        pc.width = Math.max(1, Math.round(cw * ps)); pc.height = Math.max(1, Math.round(ch * ps));
+        pc.getContext('2d').drawImage(c, 0, 0, pc.width, pc.height);
+        S.proxy = pc; S.pscale = pc.width / cw;
+        S.proxyData = pc.getContext('2d').getImageData(0, 0, pc.width, pc.height);
+        var m = 0.08;
+        S.quad0 = [{ x: cw * m, y: ch * m }, { x: cw * (1 - m), y: ch * m }, { x: cw * (1 - m), y: ch * (1 - m) }, { x: cw * m, y: ch * (1 - m) }];
+        S.quad = S.quad0.map(function (p) { return { x: p.x, y: p.y }; });
+        S.sel = { t: 'c', i: 0 }; S.prev = false; S.prevCanvas = null; S.drag = null; S.loupe = false; S.blob = null;
+        S.exif = null; S.exifState = '';
+        readExif(f);
+        var msg = 'Loaded ' + w + ' x ' + h + ' px.';
+        if (sc < 1) msg += ' Reduced to ' + cw + ' x ' + ch + ' to fit the iPhone.';
+        setStatus(msg, 'ok');
+        $('prevBtn').classList.remove('acc');
+        show('sCorners');
+        updateSelUI();
+      } catch (e) {
+        setStatus('Could not open that photo: ' + e.message, 'err');
+      }
+    };
+    img.onerror = function () { URL.revokeObjectURL(url); setStatus('Could not open that photo. Try a JPEG.', 'err'); };
+    img.src = url;
+  }
+
+  // ---------- EXIF (best effort, JPEG only)
+  function readExif(f) {
+    try {
+      var fr = new FileReader();
+      fr.onload = function () {
+        try {
+          var b = new Uint8Array(fr.result);
+          if (b[0] !== 0xFF || b[1] !== 0xD8) { S.exifState = 'none'; return; }
+          var p = 2;
+          while (p + 4 < b.length) {
+            if (b[p] !== 0xFF) break;
+            var mk = b[p + 1], len = (b[p + 2] << 8) | b[p + 3];
+            if (mk === 0xE1 && b[p + 4] === 0x45 && b[p + 5] === 0x78 && b[p + 6] === 0x69 && b[p + 7] === 0x66) {
+              var seg = b.slice(p, p + 2 + len);
+              setOrientationOne(seg);
+              S.exif = seg; S.exifState = 'copied'; return;
+            }
+            p += 2 + len;
+          }
+          S.exifState = 'none';
+        } catch (e) { S.exifState = 'none'; }
+      };
+      fr.readAsArrayBuffer(f.slice(0, 131072));
+    } catch (e) { S.exifState = 'none'; }
+  }
+  function setOrientationOne(seg) {
+    // seg: FFE1 len 'Exif\0\0' TIFF...
+    var t = 10; // start of TIFF header
+    var le = seg[t] === 0x49;
+    function r16(o) { return le ? (seg[o] | (seg[o + 1] << 8)) : ((seg[o] << 8) | seg[o + 1]); }
+    function r32(o) { return le ? (seg[o] | (seg[o + 1] << 8) | (seg[o + 2] << 16) | (seg[o + 3] << 24)) : ((seg[o] << 24) | (seg[o + 1] << 16) | (seg[o + 2] << 8) | seg[o + 3]); }
+    var ifd = t + r32(t + 4);
+    var n = r16(ifd);
+    for (var i = 0; i < n; i++) {
+      var e = ifd + 2 + i * 12;
+      if (r16(e) === 0x0112) {
+        if (le) { seg[e + 8] = 1; seg[e + 9] = 0; } else { seg[e + 8] = 0; seg[e + 9] = 1; }
+        return;
+      }
+    }
+  }
+
+  // ---------- geometry
+  function outSize(q, capLong) {
+    var top = dist(q[0], q[1]), bot = dist(q[3], q[2]), l = dist(q[0], q[3]), r = dist(q[1], q[2]);
+    var w = (top + bot) / 2, h = (l + r) / 2;
+    var s = Math.min(1, capLong / Math.max(w, h), Math.sqrt(MAXA / Math.max(1, w * h)));
+    return { w: Math.max(8, Math.round(w * s)), h: Math.max(8, Math.round(h * s)) };
+  }
+  function solve(A, b) {
+    var n = b.length, i, j, k;
+    for (i = 0; i < n; i++) {
+      var mx = i;
+      for (j = i + 1; j < n; j++) if (Math.abs(A[j][i]) > Math.abs(A[mx][i])) mx = j;
+      var t = A[i]; A[i] = A[mx]; A[mx] = t; var tb = b[i]; b[i] = b[mx]; b[mx] = tb;
+      for (j = i + 1; j < n; j++) {
+        var f = A[j][i] / A[i][i];
+        for (k = i; k < n; k++) A[j][k] -= f * A[i][k];
+        b[j] -= f * b[i];
+      }
+    }
+    var x = new Array(n);
+    for (i = n - 1; i >= 0; i--) {
+      var s = b[i];
+      for (j = i + 1; j < n; j++) s -= A[i][j] * x[j];
+      x[i] = s / A[i][i];
+    }
+    return x;
+  }
+  function homography(dst, src) {
+    var A = [], b = [];
+    for (var i = 0; i < 4; i++) {
+      var x = dst[i].x, y = dst[i].y, X = src[i].x, Y = src[i].y;
+      A.push([x, y, 1, 0, 0, 0, -x * X, -y * X]); b.push(X);
+      A.push([0, 0, 0, x, y, 1, -x * Y, -y * Y]); b.push(Y);
+    }
+    return solve(A, b);
+  }
+  function warpAsync(srcData, quad, ow, oh, prog, token) {
+    var sw = srcData.width, sh = srcData.height, sd = srcData.data;
+    var dst = [{ x: 0, y: 0 }, { x: ow - 1, y: 0 }, { x: ow - 1, y: oh - 1 }, { x: 0, y: oh - 1 }];
+    var h = homography(dst, quad);
+    var out = new ImageData(ow, oh), od = out.data;
+    var row = 0, CH = Math.max(4, Math.floor(300000 / ow));
+    return new Promise(function (res, rej) {
+      function step() {
+        if (token !== undefined && token !== S.token) { rej(new Error('cancelled')); return; }
+        var end = Math.min(oh, row + CH);
+        for (var v = row; v < end; v++) {
+          for (var u = 0; u < ow; u++) {
+            var d = h[6] * u + h[7] * v + 1;
+            var X = (h[0] * u + h[1] * v + h[2]) / d, Y = (h[3] * u + h[4] * v + h[5]) / d;
+            if (X < 0) X = 0; else if (X > sw - 1) X = sw - 1;
+            if (Y < 0) Y = 0; else if (Y > sh - 1) Y = sh - 1;
+            var x0 = X | 0, y0 = Y | 0, x1 = x0 + 1 < sw ? x0 + 1 : x0, y1 = y0 + 1 < sh ? y0 + 1 : y0;
+            var fx = X - x0, fy = Y - y0;
+            var i00 = (y0 * sw + x0) * 4, i10 = (y0 * sw + x1) * 4, i01 = (y1 * sw + x0) * 4, i11 = (y1 * sw + x1) * 4;
+            var o = (v * ow + u) * 4;
+            for (var c = 0; c < 3; c++) {
+              var top = sd[i00 + c] + (sd[i10 + c] - sd[i00 + c]) * fx;
+              var bot = sd[i01 + c] + (sd[i11 + c] - sd[i01 + c]) * fx;
+              od[o + c] = top + (bot - top) * fy;
+            }
+            od[o + 3] = 255;
+          }
+        }
+        row = end;
+        if (prog) prog(row / oh);
+        if (row < oh) setTimeout(step, 0); else res(out);
+      }
+      step();
+    });
+  }
+
+  // ---------- layout + drawing
+  var cv = $('cv'), ctx = cv.getContext('2d');
+  function layout() {
+    if (!S.src) return;
+    var wrapW = $('cwrap').clientWidth || 340;
+    var maxH = Math.max(300, Math.round(window.innerHeight * 0.56));
+    var ch = Math.round(clamp((S.H * (wrapW - PAD * 2) / S.W) + PAD * 2, 260, maxH));
+    var dpr = window.devicePixelRatio || 1;
+    cv.style.height = ch + 'px';
+    cv.width = Math.round(wrapW * dpr); cv.height = Math.round(ch * dpr);
+    var s = Math.min((wrapW - PAD * 2) / S.W, (ch - PAD * 2) / S.H);
+    S.geo = { cw: wrapW, ch: ch, s: s, ox: (wrapW - S.W * s) / 2, oy: (ch - S.H * s) / 2, dpr: dpr };
+  }
+  window.addEventListener('resize', function () { if (S.src && !$('sCorners').classList.contains('hide')) { layout(); redraw(); } });
+  function toD(p) { return { x: S.geo.ox + p.x * S.geo.s, y: S.geo.oy + p.y * S.geo.s }; }
+  function fromD(x, y) { return { x: (x - S.geo.ox) / S.geo.s, y: (y - S.geo.oy) / S.geo.s }; }
+
+  function redraw() {
+    if (!S.src || $('sCorners').classList.contains('hide')) return;
+    var g = S.geo, d = g.dpr || 1;
+    ctx.setTransform(d, 0, 0, d, 0, 0);
+    ctx.fillStyle = css('--card'); ctx.fillRect(0, 0, g.cw, g.ch);
+    if (S.prev && S.prevCanvas) { drawPreview(); updateReadout(); return; }
+    ctx.drawImage(S.src, g.ox, g.oy, S.W * g.s, S.H * g.s);
+    var pts = S.quad.map(toD);
+    // dim outside the quad
+    ctx.save();
+    ctx.fillStyle = 'rgba(0,0,0,0.45)';
+    ctx.beginPath(); ctx.rect(g.ox, g.oy, S.W * g.s, S.H * g.s);
+    ctx.moveTo(pts[0].x, pts[0].y); for (var i = 1; i < 4; i++) ctx.lineTo(pts[i].x, pts[i].y); ctx.closePath();
+    ctx.fill('evenodd');
+    ctx.restore();
+    var hc = css('--handle'), card = css('--card');
+    ctx.lineWidth = 2; ctx.strokeStyle = hc;
+    ctx.beginPath(); ctx.moveTo(pts[0].x, pts[0].y); for (i = 1; i < 4; i++) ctx.lineTo(pts[i].x, pts[i].y); ctx.closePath(); ctx.stroke();
+    // edge handles
+    for (i = 0; i < 4; i++) {
+      var a = pts[i], b = pts[(i + 1) % 4], mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+      var selE = S.sel.t === 'e' && S.sel.i === i, r = selE ? 8 : 6.5;
+      ctx.fillStyle = selE ? hc : card; ctx.fillRect(mx - r, my - r, r * 2, r * 2); ctx.strokeRect(mx - r, my - r, r * 2, r * 2);
+    }
+    // corner handles
+    ctx.font = '700 12px Helvetica, Arial, sans-serif';
+    for (i = 0; i < 4; i++) {
+      var selC = S.sel.t === 'c' && S.sel.i === i;
+      ctx.beginPath(); ctx.arc(pts[i].x, pts[i].y, selC ? 11 : 9, 0, Math.PI * 2);
+      ctx.fillStyle = selC ? hc : card; ctx.fill(); ctx.stroke();
+      ctx.fillStyle = hc;
+      var ox = pts[i].x < g.cw / 2 ? -22 : 14, oy = pts[i].y < g.ch / 2 ? -12 : 20;
+      ctx.fillText(String(i + 1), pts[i].x + ox, pts[i].y + oy);
+    }
+    if (S.loupe) drawLoupe(pts);
+    updateReadout();
+  }
+
+  function selPoint() {
+    var q = S.quad;
+    if (S.sel.t === 'c') return q[S.sel.i];
+    var a = q[S.sel.i], b = q[(S.sel.i + 1) % 4];
+    return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+  }
+  function drawLoupe(pts) {
+    var g = S.geo, hp = toD(selPoint()), R = LR;
+    var fp = S.finger || hp;
+    var cx = fp.x, cy = fp.y - 96;
+    if (cy < R + 4) {
+      cx = fp.x > g.cw / 2 ? fp.x - 104 : fp.x + 104;
+      cy = fp.y - 40;
+    }
+    cx = clamp(cx, R + 4, g.cw - R - 4);
+    cy = clamp(cy, R + 4, g.ch - R - 4);
+    var hc = css('--handle'), txt = css('--text');
+    ctx.save();
+    ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.clip();
+    ctx.fillStyle = css('--card'); ctx.fillRect(cx - R, cy - R, R * 2, R * 2);
+    var z = g.s * ZOOM, sp = selPoint();
+    var sw = (R * 2) / z;
+    ctx.drawImage(S.src, sp.x - sw / 2, sp.y - sw / 2, sw, sw, cx - R, cy - R, R * 2, R * 2);
+    ctx.strokeStyle = hc; ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    for (var i = 0; i < 4; i++) {
+      var lx = cx + (S.quad[i].x - sp.x) * z, ly = cy + (S.quad[i].y - sp.y) * z;
+      if (i === 0) ctx.moveTo(lx, ly); else ctx.lineTo(lx, ly);
+    }
+    ctx.closePath(); ctx.stroke();
+    ctx.strokeStyle = txt; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(cx, cy - R + 8); ctx.lineTo(cx, cy + R - 28); ctx.moveTo(cx - R + 8, cy); ctx.lineTo(cx + R - 8, cy); ctx.stroke();
+    ctx.restore();
+    ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.lineWidth = 2; ctx.strokeStyle = txt; ctx.stroke();
+    ctx.fillStyle = txt; ctx.font = '700 10px Helvetica, Arial, sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('4X', cx, cy + R - 11); ctx.textAlign = 'start';
+  }
+
+  function drawPreview() {
+    var g = S.geo, pc = S.prevCanvas;
+    var s = Math.min((g.cw - 20) / pc.width, (g.ch - 44) / pc.height);
+    var w = pc.width * s, h = pc.height * s;
+    ctx.drawImage(pc, (g.cw - w) / 2, 30 + (g.ch - 44 - h) / 2, w, h);
+    ctx.fillStyle = css('--text'); ctx.font = '700 11px Helvetica, Arial, sans-serif';
+    ctx.fillText('PREVIEW', 10, 18);
+  }
+
+  function selName() {
+    if (S.sel.t === 'c') return 'CORNER ' + (S.sel.i + 1);
+    return ['TOP', 'RIGHT', 'BOTTOM', 'LEFT'][S.sel.i] + ' EDGE';
+  }
+  function updateReadout() {
+    var p = selPoint();
+    $('readout').textContent = selName() + '   X ' + Math.round(p.x) + '   Y ' + Math.round(p.y);
+    var o = outSize(S.quad, MAXL);
+    $('outinfo').textContent = 'OUTPUT ' + o.w + ' x ' + o.h + ' px';
+  }
+  function updateSelUI() {
+    for (var i = 0; i < 4; i++) {
+      $('sel_c' + i).classList.toggle('acc', S.sel.t === 'c' && S.sel.i === i);
+      $('sel_e' + i).classList.toggle('acc', S.sel.t === 'e' && S.sel.i === i);
+    }
+    $('moving').innerHTML = 'MOVING<br>' + selName();
+    $('st1').classList.toggle('acc', S.step === 1);
+    $('st10').classList.toggle('acc', S.step === 10);
+    redraw();
+  }
+  [0, 1, 2, 3].forEach(function (i) {
+    $('sel_c' + i).addEventListener('click', function () { S.sel = { t: 'c', i: i }; updateSelUI(); });
+    $('sel_e' + i).addEventListener('click', function () { S.sel = { t: 'e', i: i }; updateSelUI(); });
+  });
+  $('st1').addEventListener('click', function () { S.step = 1; updateSelUI(); });
+  $('st10').addEventListener('click', function () { S.step = 10; updateSelUI(); });
+
+  // ---------- moving points
+  function movePts(idx, dx, dy) {
+    // clamp the shift so every moved point stays inside the image
+    var minx = -1e9, maxx = 1e9, miny = -1e9, maxy = 1e9;
+    idx.forEach(function (i) {
+      var p = S.quad[i];
+      minx = Math.max(minx, -p.x); maxx = Math.min(maxx, S.W - 1 - p.x);
+      miny = Math.max(miny, -p.y); maxy = Math.min(maxy, S.H - 1 - p.y);
+    });
+    dx = clamp(dx, minx, maxx); dy = clamp(dy, miny, maxy);
+    idx.forEach(function (i) { S.quad[i] = { x: S.quad[i].x + dx, y: S.quad[i].y + dy }; });
+  }
+  function selIdx() { return S.sel.t === 'c' ? [S.sel.i] : [S.sel.i, (S.sel.i + 1) % 4]; }
+  function afterChange() { if (S.prev) schedulePreview(); redraw(); }
+
+  // ---------- touch / mouse on the canvas
+  function pos(e) { var r = cv.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; }
+  cv.addEventListener('pointerdown', function (e) {
+    if (!S.src || S.prev) return;
+    e.preventDefault();
+    var p = pos(e), pts = S.quad.map(toD), best = null, bd = 1e9, i;
+    for (i = 0; i < 4; i++) { var d = dist(p, pts[i]); if (d < 40 && d < bd) { bd = d; best = { t: 'c', i: i }; } }
+    if (!best) {
+      for (i = 0; i < 4; i++) {
+        var a = pts[i], b = pts[(i + 1) % 4], m = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+        var d2 = dist(p, m) + 8; if (d2 < 40 && d2 < bd) { bd = d2; best = { t: 'e', i: i }; }
+      }
+    }
+    if (!best) return;
+    S.sel = best;
+    var hp = toD(selPoint());
+    S.drag = { start: p, off: { x: hp.x - p.x, y: hp.y - p.y }, orig: S.quad.map(function (q) { return { x: q.x, y: q.y }; }), id: e.pointerId };
+    S.finger = p; S.loupe = true;
+    try { cv.setPointerCapture(e.pointerId); } catch (x) {}
+    updateSelUI();
+  });
+  cv.addEventListener('pointermove', function (e) {
+    if (!S.drag) return;
+    e.preventDefault();
+    var p = pos(e), idx = selIdx(), s = S.geo.s;
+    S.quad = S.drag.orig.map(function (q) { return { x: q.x, y: q.y }; });
+    var dx = (p.x - S.drag.start.x) / s, dy = (p.y - S.drag.start.y) / s;
+    movePts(idx, dx, dy);
+    S.finger = p;
+    redraw();
+  });
+  function endDrag(e) {
+    if (!S.drag) return;
+    S.drag = null; S.finger = null; S.loupe = false;
+    if (S.prev) schedulePreview();
+    redraw();
+  }
+  cv.addEventListener('pointerup', endDrag);
+  cv.addEventListener('pointercancel', endDrag);
+
+  // ---------- nudge arrows with hold to repeat
+  function nudge(dx, dy) {
+    movePts(selIdx(), dx * S.step, dy * S.step);
+    S.loupe = true; afterChange();
+  }
+  function bindArrow(id, dx, dy) {
+    var el = $(id), t1 = null, t2 = null, n = 0;
+    function stop() { clearTimeout(t1); clearInterval(t2); t1 = t2 = null; n = 0; S.loupe = false; redraw(); }
+    el.addEventListener('pointerdown', function (e) {
+      e.preventDefault();
+      nudge(dx, dy);
+      t1 = setTimeout(function () {
+        t2 = setInterval(function () { n++; var k = n > 20 ? 3 : 1; for (var i = 0; i < k; i++) nudge(dx, dy); }, 70);
+      }, 380);
+    });
+    ['pointerup', 'pointerleave', 'pointercancel'].forEach(function (ev) { el.addEventListener(ev, stop); });
+    el.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+  }
+  bindArrow('n_up', 0, -1); bindArrow('n_down', 0, 1); bindArrow('n_left', -1, 0); bindArrow('n_right', 1, 0);
+
+  // ---------- reset, full image, preview
+  $('resetBtn').addEventListener('click', function () { S.quad = S.quad0.map(function (p) { return { x: p.x, y: p.y }; }); afterChange(); });
+  $('fullBtn').addEventListener('click', function () {
+    S.quad = [{ x: 0, y: 0 }, { x: S.W - 1, y: 0 }, { x: S.W - 1, y: S.H - 1 }, { x: 0, y: S.H - 1 }]; afterChange();
+  });
+  $('prevBtn').addEventListener('click', function () {
+    S.prev = !S.prev;
+    $('prevBtn').classList.toggle('acc', S.prev);
+    if (S.prev) { buildPreview(); } else { redraw(); }
+  });
+  function schedulePreview() { clearTimeout(S.prevTimer); S.prevTimer = setTimeout(buildPreview, 90); }
+  function buildPreview() {
+    if (!S.prev) return;
+    var q = S.quad.map(function (p) { return { x: p.x * S.pscale, y: p.y * S.pscale }; });
+    var o = outSize(q, 700);
+    var tk = ++S.token;
+    warpAsync(S.proxyData, q, o.w, o.h, null, tk).then(function (img) {
+      var c = document.createElement('canvas'); c.width = o.w; c.height = o.h; c.getContext('2d').putImageData(img, 0, 0);
+      S.prevCanvas = c; redraw();
+    }).catch(function () {});
+  }
+
+  // ---------- save screen
+  $('nextBtn').addEventListener('click', function () { S.prev = false; $('prevBtn').classList.remove('acc'); show('sSave'); buildOutput(); });
+  $('backBtn').addEventListener('click', function () { S.token++; show('sCorners'); setStatus(''); });
+  function buildOutput() {
+    var tk = ++S.token;
+    S.blob = null; $('shareBtn').disabled = true; $('dlBtn').disabled = true;
+    $('fname').value = S.name + '_corrected.jpg';
+    $('outtxt').textContent = 'Working...';
+    $('thumb').removeAttribute('src');
+    if (S.thumbUrl) { URL.revokeObjectURL(S.thumbUrl); S.thumbUrl = null; }
+    var o = outSize(S.quad, MAXL);
+    S.outW = o.w; S.outH = o.h;
+    setStatus('Squaring up the photo...', '', 0);
+    var sd = S.src.getContext('2d').getImageData(0, 0, S.W, S.H);
+    warpAsync(sd, S.quad, o.w, o.h, function (f) { setStatus('Squaring up the photo... ' + Math.round(f * 100) + '%', '', f); }, tk).then(function (img) {
+      var c = document.createElement('canvas'); c.width = o.w; c.height = o.h; c.getContext('2d').putImageData(img, 0, 0);
+      setStatus('Saving JPEG...', '', 1);
+      c.toBlob(function (blob) {
+        if (tk !== S.token) return;
+        if (!blob) { setStatus('Could not make the JPEG.', 'err'); return; }
+        if (!S.exif) { finish(blob, false); return; }
+        var rd = new FileReader();
+        rd.onload = function () {
+          try {
+            var jb = new Uint8Array(rd.result);
+            var merged = new Blob([jb.slice(0, 2), S.exif, jb.slice(2)], { type: 'image/jpeg' });
+            finish(merged, true);
+          } catch (e) { finish(blob, false); }
+        };
+        rd.readAsArrayBuffer(blob);
+      }, 'image/jpeg', 0.95);
+    }).catch(function (e) { if (e.message !== 'cancelled') setStatus('Failed: ' + e.message, 'err'); });
+    function finish(blob, withExif) {
+      if (tk !== S.token) return;
+      S.blob = blob;
+      S.thumbUrl = URL.createObjectURL(blob);
+      $('thumb').src = S.thumbUrl;
+      $('outtxt').textContent = S.outW + ' x ' + S.outH + ' px   JPEG   QUALITY 95   ' + (blob.size / 1048576).toFixed(1) + ' MB';
+      $('exifNote').textContent = withExif ? 'Date taken and location were copied from the original. Check one saved photo in Photos.' : 'Date taken and location were not available to copy.';
+      $('shareBtn').disabled = false; $('dlBtn').disabled = false;
+      setStatus('Ready. Choose how to save.', 'ok');
+    }
+  }
+  function fileName() {
+    var n = ($('fname').value || 'corrected').replace(/[\\\/:*?"<>|]/g, '_');
+    if (!/\.jpe?g$/i.test(n)) n += '.jpg';
+    return n;
+  }
+  $('shareBtn').addEventListener('click', function () {
+    if (!S.blob) return;
+    var file;
+    try { file = new File([S.blob], fileName(), { type: 'image/jpeg' }); } catch (e) { setStatus('Sharing is not supported here. Use DOWNLOAD TO FILES.', 'err'); return; }
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      navigator.share({ files: [file] }).then(function () { setStatus('Shared.', 'ok'); }).catch(function (e) {
+        if (e && e.name !== 'AbortError') setStatus('Share failed: ' + e.message, 'err');
+      });
+    } else { setStatus('Sharing is not supported here. Use DOWNLOAD TO FILES.', 'err'); }
+  });
+  $('dlBtn').addEventListener('click', function () {
+    if (!S.blob) return;
+    var a = document.createElement('a'); a.href = URL.createObjectURL(S.blob); a.download = fileName();
+    document.body.appendChild(a); a.click();
+    setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 4000);
+    setStatus('Download started. Look in Downloads in Safari.', 'ok');
+  });
+
+  applyTheme();
+  show('sStart');
+  // test hook (harmless on the phone)
+  window.__IC = { S: S, loadFile: loadFile, warpAsync: warpAsync, homography: homography, outSize: outSize };
+})();
+</script>
+</body>
+</html>
