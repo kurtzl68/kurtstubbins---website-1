@@ -98,6 +98,16 @@ input {
 input::placeholder { color: var(--muted); }
 input.name { font-family: var(--serif); font-size: 18px; }
 
+input[type=datetime-local], input[type=time] { min-width: 0; max-width: 100%; display: block; text-align: left; -webkit-appearance: none; appearance: none; }
+.tl-row { cursor: pointer; }
+.tl-row:active { background: var(--faint); }
+.hint { font-family: var(--mono); font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink3); margin-top: 8px; }
+.ov { position: fixed; inset: 0; background: rgba(20,18,16,0.45); display: none; align-items: flex-end; justify-content: center; z-index: 50; }
+.ov.on { display: flex; }
+.panel { background: var(--sheet); border: 0.5px solid var(--ink3); width: 100%; max-width: 560px; max-height: 90vh; overflow: auto; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+.panel .err { font-family: var(--mono); font-size: 11px; letter-spacing: 0.08em; color: var(--red); min-height: 14px; }
+.panel .btns { display: flex; gap: 8px; flex-wrap: wrap; }
+.panel .btns button { flex: 1 1 auto; }
 /* Recent */
 .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
 .chip { display: inline-flex; align-items: stretch; border: 0.5px solid var(--ink3); border-radius: 2px; }
@@ -157,6 +167,7 @@ input.name { font-family: var(--serif); font-size: 18px; }
       <button id="share" type="button" class="solid">Share image</button>
       <button id="copy" type="button">Copy plan</button>
     </div>
+    <div class="hint">Tap any row to edit it</div>
   </div>
 
   <div class="sheet">
@@ -179,6 +190,8 @@ input.name { font-family: var(--serif); font-size: 18px; }
   </div>
 
 </div>
+
+<div class="ov" id="ov"><div class="panel" id="panel" role="dialog" aria-modal="true"></div></div>
 
 <script>
 (function () {
@@ -273,15 +286,16 @@ input.name { font-family: var(--serif); font-size: 18px; }
   }
 
   // Backward schedule from X: leave(i) = arrive(next) - drive(i) - buffer; arrive(i) = leave(i) - stay(i) (stay is 0 for A).
-  function compute() {
-    var T = new Date(state.arrive).getTime();
+  function compute(st) {
+    st = st || state;
+    var T = new Date(st.arrive).getTime();
     if (!isFinite(T)) { return null; }
-    var buf = num(state.buffer);
-    var n = state.stops.length;
+    var buf = num(st.buffer);
+    var n = st.stops.length;
     var res = new Array(n);
     var next = T;
     for (var i = n - 1; i >= 0; i--) {
-      var s = state.stops[i];
+      var s = st.stops[i];
       var leave = next - (num(s.drive) + buf) * 60000;
       var stay = (i === 0) ? 0 : num(s.stay);
       var arr = leave - stay * 60000;
@@ -339,12 +353,12 @@ input.name { font-family: var(--serif); font-size: 18px; }
         times = 'ARRIVE ' + fmtTime(r.arrive) + '<br>LEAVE <b>' + fmtTime(r.leave) + '</b>';
       }
       if (dayKey(r.leave) !== xKey) { times += '<span class="tl-day">' + esc(fmtDay(r.leave)) + '</span>'; }
-      rows += '<div class="tl-row"><span class="tl-letter">' + label(i) + '</span><span class="tl-name">' + (nm(i) ? esc(nm(i)) : '<span style="color:var(--muted)">Stop ' + label(i) + '</span>') + '</span><span class="tl-times">' + times + '</span></div>';
+      rows += '<div class="tl-row" data-row="' + i + '"><span class="tl-letter">' + label(i) + '</span><span class="tl-name">' + (nm(i) ? esc(nm(i)) : '<span style="color:var(--muted)">Stop ' + label(i) + '</span>') + '</span><span class="tl-times">' + times + '</span></div>';
     }
     var dn = (state.dest || "").trim();
     var xt = 'ARRIVE BY <b>' + fmtTime(c.T) + '</b>';
     if (dayKey(c.T) !== dayKey(Date.now())) { xt += '<span class="tl-day">' + esc(fmtDay(c.T)) + '</span>'; }
-    rows += '<div class="tl-row"><span class="tl-letter">' + dl() + '</span><span class="tl-name">' + (dn ? esc(dn) : '<span style="color:var(--muted)">Destination</span>') + '</span><span class="tl-times">' + xt + '</span></div>';
+    rows += '<div class="tl-row" data-row="' + n + '"><span class="tl-letter">' + dl() + '</span><span class="tl-name">' + (dn ? esc(dn) : '<span style="color:var(--muted)">Destination</span>') + '</span><span class="tl-times">' + xt + '</span></div>';
     el.tl.innerHTML = rows;
   }
 
@@ -464,6 +478,145 @@ input.name { font-family: var(--serif); font-size: 18px; }
     } else {
       el.reset.textContent = "Tap again to confirm"; el.reset.dataset.armed = "1";
       setTimeout(function () { el.reset.textContent = "Reset"; el.reset.dataset.armed = "0"; }, 3000);
+    }
+  });
+
+
+  // ---- Edit panel: works on a copy; Done keeps it, tapping outside or Cancel discards it ----
+  var ov = document.getElementById("ov");
+  var panel = document.getElementById("panel");
+  var work = null, pi = 0;
+
+  function toHM(ms) { var d = new Date(ms); return pad(d.getHours()) + ":" + pad(d.getMinutes()); }
+  function fromHM(hm, refMs) {
+    var m = /^(\d{1,2}):(\d{2})/.exec(hm || "");
+    if (!m) { return NaN; }
+    var d = new Date(refMs);
+    d.setHours(parseInt(m[1], 10), parseInt(m[2], 10), 0, 0);
+    var t = d.getTime(), best = t, k;
+    for (k = -1; k <= 1; k += 2) { var c = t + k * 86400000; if (Math.abs(c - refMs) < Math.abs(best - refMs)) { best = c; } }
+    return best;
+  }
+  function pv(id) { return document.getElementById(id); }
+  function pErr(msg) { var e = pv("perr"); if (e) { e.textContent = msg || ""; } }
+
+  function renderPanel() {
+    var n = work.stops.length, isDest = (pi === n);
+    var L = label(pi);
+    var h = '<div class="label">' + (isDest ? "Destination " + L : (pi === 0 ? "Start " + L : "Stop " + L)) + '</div>';
+    h += '<input class="name" type="text" id="pname" placeholder="' + (isDest ? "Destination name (optional)" : "Name (optional)") + '" value="' + esc(isDest ? (work.dest || "") : (work.stops[pi].name || "")) + '" aria-label="Name">';
+    if (isDest) {
+      h += '<div class="field"><span class="label">Arrive by</span><input type="datetime-local" id="pdestarr" value="' + esc(work.arrive) + '"></div>';
+    } else {
+      h += '<div class="row2">';
+      if (pi > 0) {
+        h += '<div class="field"><span class="label">Arrive at ' + L + '</span><input type="time" id="parr"></div>';
+      } else {
+        h += '<div class="field"><span class="label">Starting point</span><span class="note" style="padding-top:8px;">You leave from here.</span></div>';
+      }
+      h += '<div class="field"><span class="label">Leave ' + L + '</span><input type="time" id="plv"></div>';
+      h += '</div><div class="row2">';
+      if (pi > 0) {
+        h += '<div class="field"><span class="label">Time at ' + L + ' (min)</span><input type="number" inputmode="numeric" min="0" step="1" id="pstay" value="' + esc(work.stops[pi].stay) + '"></div>';
+      } else { h += '<div></div>'; }
+      h += '<div class="field"><span class="label">Drive ' + L + ' to ' + label(pi + 1) + ' (min)</span><input type="number" inputmode="numeric" min="0" step="1" id="pdrive" value="' + esc(work.stops[pi].drive) + '"></div>';
+      h += '</div>';
+    }
+    h += '<div class="err" id="perr" aria-live="polite"></div>';
+    h += '<div class="btns"><button type="button" data-act="addbefore">Add stop before</button>';
+    if (!isDest) { h += '<button type="button" data-act="addafter">Add stop after</button>'; }
+    h += '</div>';
+    h += '<div class="btns">';
+    if (!isDest && n > 1) { h += '<button type="button" data-act="remove">Remove ' + L + '</button>'; }
+    h += '<button type="button" data-act="cancel">Cancel</button><button type="button" class="solid" data-act="done">Done</button></div>';
+    panel.innerHTML = h;
+    syncTimes();
+  }
+
+  function syncTimes() {
+    var c = compute(work);
+    if (!c || pi >= work.stops.length) { return; }
+    var a = pv("parr"), l = pv("plv");
+    if (a && document.activeElement !== a) { a.value = toHM(c.stops[pi].arrive); }
+    if (l && document.activeElement !== l) { l.value = toHM(c.stops[pi].leave); }
+  }
+
+  function openPanel(i) {
+    if (!compute()) { return; }
+    work = JSON.parse(JSON.stringify(state));
+    pi = i;
+    renderPanel();
+    ov.classList.add("on");
+  }
+  function closePanel() { ov.classList.remove("on"); work = null; }
+
+  el.tl.addEventListener("click", function (e) {
+    var r = e.target.closest(".tl-row");
+    if (!r) { return; }
+    openPanel(parseInt(r.getAttribute("data-row"), 10));
+  });
+  ov.addEventListener("click", function (e) { if (e.target === ov) { closePanel(); } });
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape" && work) { closePanel(); } });
+
+  panel.addEventListener("input", function (e) {
+    var t = e.target, n = work.stops.length;
+    pErr("");
+    if (t.id === "pname") { if (pi === n) { work.dest = t.value; } else { work.stops[pi].name = t.value; } }
+    else if (t.id === "pstay") { work.stops[pi].stay = t.value; syncTimes(); }
+    else if (t.id === "pdrive") { work.stops[pi].drive = t.value; syncTimes(); }
+    else if (t.id === "pdestarr") { if (t.value) { work.arrive = t.value; } }
+  });
+
+  panel.addEventListener("change", function (e) {
+    var t = e.target, c = compute(work);
+    if (!c) { return; }
+    var n = work.stops.length, buf = num(work.buffer);
+    if (t.id === "parr") {
+      var ta = fromHM(t.value, c.stops[pi].arrive);
+      var stay = (c.stops[pi].leave - ta) / 60000;
+      if (!isFinite(stay) || stay < 0) { pErr("Arrive must come before leave."); syncTimes(); return; }
+      work.stops[pi].stay = Math.round(stay);
+      pv("pstay").value = work.stops[pi].stay;
+      pErr("");
+    } else if (t.id === "plv") {
+      var tl = fromHM(t.value, c.stops[pi].leave);
+      var nextArr = (pi === n - 1) ? c.T : c.stops[pi + 1].arrive;
+      var drv = (nextArr - tl) / 60000 - buf;
+      if (!isFinite(drv) || drv < 0) { pErr("Too late: leave " + (buf > 0 ? "at least " + (Math.round(buf)) + " min (buffer) " : "") + "before the next arrival."); t.value = toHM(c.stops[pi].leave); return; }
+      work.stops[pi].drive = Math.round(drv);
+      pv("pdrive").value = work.stops[pi].drive;
+      pErr("");
+    }
+    syncTimes();
+  });
+
+  panel.addEventListener("click", function (e) {
+    var b = e.target.closest("[data-act]");
+    if (!b) { return; }
+    var act = b.getAttribute("data-act"), n = work.stops.length;
+    if (act === "cancel") { closePanel(); return; }
+    if (act === "done") {
+      state = work;
+      closePanel();
+      save(); renderInputs(); renderOutputs();
+      return;
+    }
+    if (act === "remove") {
+      if (n > 1 && pi < n) { work.stops.splice(pi, 1); if (pi > work.stops.length) { pi = work.stops.length; } renderPanel(); }
+      return;
+    }
+    if (act === "addafter" && pi < n) {
+      work.stops.splice(pi + 1, 0, { name: "", drive: 15, stay: 5 });
+      pi = pi + 1;
+      renderPanel();
+      return;
+    }
+    if (act === "addbefore") {
+      var ns = { name: "", drive: 15, stay: 5 };
+      if (pi === 0) { ns.stay = 0; work.stops[0].stay = 5; }
+      work.stops.splice(pi, 0, ns);
+      renderPanel();
+      return;
     }
   });
 
