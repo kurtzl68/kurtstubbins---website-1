@@ -101,6 +101,8 @@ input.name { font-family: var(--serif); font-size: 18px; }
 input[type=datetime-local], input[type=time] { min-width: 0; max-width: 100%; display: block; text-align: left; -webkit-appearance: none; appearance: none; }
 .tl-row { cursor: pointer; }
 .tl-row:active { background: var(--faint); }
+.tl-note { display: block; font-size: 10px; letter-spacing: 0.1em; color: var(--ink3); text-transform: uppercase; }
+.tl-note.bad { color: var(--red); }
 .hint { font-family: var(--mono); font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink3); margin-top: 8px; }
 .ov { position: fixed; inset: 0; background: rgba(20,18,16,0.45); display: none; align-items: flex-end; justify-content: center; z-index: 50; }
 .ov.on { display: flex; }
@@ -210,12 +212,13 @@ input[type=datetime-local], input[type=time] { min-width: 0; max-width: 100%; di
     d.setMinutes(Math.ceil(d.getMinutes() / 5) * 5, 0, 0);
     return {
       id: newId(),
+      destPinned: true,
       arrive: toLocalInput(d),
       buffer: 5,
       dest: "",
       stops: [
-        { name: "", drive: 25, stay: 0 },
-        { name: "", drive: 15, stay: 10 }
+        { name: "", drive: 25, stay: 0, pin: "" },
+        { name: "", drive: 15, stay: 10, pin: "" }
       ]
     };
   }
@@ -285,24 +288,48 @@ input[type=datetime-local], input[type=time] { min-width: 0; max-width: 100%; di
     return r + " min";
   }
 
-  // Backward schedule from X: leave(i) = arrive(next) - drive(i) - buffer; arrive(i) = leave(i) - stay(i) (stay is 0 for A).
+  // Pins: any stop (and the destination) can have a fixed arrival time. Before the first pin the chain is worked
+  // out backward from it. After each pin the chain runs forward as early as possible; spare time shows at the next pin.
   function compute(st) {
     st = st || state;
-    var T = new Date(st.arrive).getTime();
-    if (!isFinite(T)) { return null; }
-    var buf = num(st.buffer);
-    var n = st.stops.length;
-    var res = new Array(n);
-    var next = T;
-    for (var i = n - 1; i >= 0; i--) {
-      var s = st.stops[i];
-      var leave = next - (num(s.drive) + buf) * 60000;
-      var stay = (i === 0) ? 0 : num(s.stay);
-      var arr = leave - stay * 60000;
-      res[i] = { arrive: arr, leave: leave };
-      next = arr;
+    var n = st.stops.length, buf = num(st.buffer), i, k;
+    var pins = new Array(n + 1);
+    for (i = 0; i < n; i++) { pins[i] = st.stops[i].pin ? new Date(st.stops[i].pin).getTime() : NaN; }
+    pins[n] = (st.destPinned === false) ? NaN : new Date(st.arrive).getTime();
+    var P = [];
+    for (i = 0; i <= n; i++) { if (isFinite(pins[i])) { P.push(i); } }
+    if (!P.length) {
+      var f = new Date(st.arrive).getTime();
+      if (!isFinite(f)) { return null; }
+      pins[n] = f; P = [n];
     }
-    return { T: T, stops: res };
+    function stayOf(j) { return j === 0 ? 0 : num(st.stops[j].stay); }
+    function driveOf(j) { return num(st.stops[j].drive); }
+    var arr = new Array(n + 1), lv = new Array(n + 1), spare = new Array(n + 1), late = new Array(n + 1);
+    for (i = 0; i <= n; i++) { spare[i] = 0; late[i] = 0; }
+    var p1 = P[0];
+    arr[p1] = pins[p1];
+    if (p1 < n) { lv[p1] = arr[p1] + stayOf(p1) * 60000; }
+    for (i = p1 - 1; i >= 0; i--) {
+      lv[i] = arr[i + 1] - (driveOf(i) + buf) * 60000;
+      arr[i] = lv[i] - stayOf(i) * 60000;
+    }
+    for (k = 0; k < P.length; k++) {
+      var start = P[k];
+      var hasNext = (k + 1 < P.length);
+      var end = hasNext ? P[k + 1] : n;
+      for (i = start + 1; i <= end; i++) {
+        var a = lv[i - 1] + (driveOf(i - 1) + buf) * 60000;
+        if (i === end && hasNext) {
+          if (a <= pins[i]) { spare[i] = (pins[i] - a) / 60000; arr[i] = pins[i]; }
+          else { late[i] = (a - pins[i]) / 60000; arr[i] = a; }
+        } else { arr[i] = a; }
+        if (i < n) { lv[i] = arr[i] + stayOf(i) * 60000; }
+      }
+    }
+    var res = [];
+    for (i = 0; i < n; i++) { res.push({ arrive: arr[i], leave: lv[i], pinned: isFinite(pins[i]), spare: spare[i], late: late[i] }); }
+    return { T: arr[n], stops: res, dest: { pinned: isFinite(pins[n]), spare: spare[n], late: late[n] } };
   }
 
   var el = {
@@ -322,6 +349,14 @@ input[type=datetime-local], input[type=time] { min-width: 0; max-width: 100%; di
     theme: document.getElementById("theme")
   };
 
+  function notes(r) {
+    var h = "";
+    if (r.pinned) { h += '<span class="tl-note">Pinned</span>'; }
+    if (r.late > 0.5) { h += '<span class="tl-note bad">Late ' + fmtDur(r.late) + '</span>'; }
+    else if (r.spare > 0.5) { h += '<span class="tl-note">' + fmtDur(r.spare) + ' spare</span>'; }
+    return h;
+  }
+
   function renderOutputs() {
     var c = compute();
     var n = state.stops.length;
@@ -338,13 +373,19 @@ input[type=datetime-local], input[type=time] { min-width: 0; max-width: 100%; di
     var cd, cls = "";
     if (mins >= 0) { cd = "in " + fmtDur(mins); } else { cd = "already " + fmtDur(mins) + " ago"; cls = " warn"; }
     var day = dayKey(lv) !== dayKey(Date.now()) ? fmtDay(lv) + ", " : "";
+    var extra = "";
+    if (!c.dest.pinned) { extra += '<div class="sub">Arrive ' + esc(dl()) + ' about ' + fmtTime(c.T) + '</div>'; }
+    var i, lateMsg = "";
+    for (i = 0; i < n; i++) { if (c.stops[i].late > 0.5) { lateMsg = "Can't make " + label(i) + " on time: " + fmtDur(c.stops[i].late) + " late"; break; } }
+    if (!lateMsg && c.dest.late > 0.5) { lateMsg = "Can't make " + dl() + " on time: " + fmtDur(c.dest.late) + " late"; }
+    if (lateMsg) { extra += '<div class="sub warn">' + esc(lateMsg) + '</div>'; }
     el.hero.innerHTML =
       '<div class="label">Leave ' + esc(stopTitle(0)) + ' by</div>' +
       '<div class="big' + cls + '">' + fmtTime(lv) + '</div>' +
-      '<div class="sub' + cls + '">' + esc(day) + cd + '</div>';
+      '<div class="sub' + cls + '">' + esc(day) + cd + '</div>' + extra;
 
     var rows = "";
-    for (var i = 0; i < n; i++) {
+    for (i = 0; i < n; i++) {
       var r = c.stops[i];
       var times;
       if (i === 0) {
@@ -353,17 +394,20 @@ input[type=datetime-local], input[type=time] { min-width: 0; max-width: 100%; di
         times = 'ARRIVE ' + fmtTime(r.arrive) + '<br>LEAVE <b>' + fmtTime(r.leave) + '</b>';
       }
       if (dayKey(r.leave) !== xKey) { times += '<span class="tl-day">' + esc(fmtDay(r.leave)) + '</span>'; }
+      times += notes(r);
       rows += '<div class="tl-row" data-row="' + i + '"><span class="tl-letter">' + label(i) + '</span><span class="tl-name">' + (nm(i) ? esc(nm(i)) : '<span style="color:var(--muted)">Stop ' + label(i) + '</span>') + '</span><span class="tl-times">' + times + '</span></div>';
     }
     var dn = (state.dest || "").trim();
-    var xt = 'ARRIVE BY <b>' + fmtTime(c.T) + '</b>';
+    var xt = (c.dest.pinned ? 'ARRIVE BY ' : 'ARRIVE ~ ') + '<b>' + fmtTime(c.T) + '</b>';
     if (dayKey(c.T) !== dayKey(Date.now())) { xt += '<span class="tl-day">' + esc(fmtDay(c.T)) + '</span>'; }
+    xt += notes(c.dest);
     rows += '<div class="tl-row" data-row="' + n + '"><span class="tl-letter">' + dl() + '</span><span class="tl-name">' + (dn ? esc(dn) : '<span style="color:var(--muted)">Destination</span>') + '</span><span class="tl-times">' + xt + '</span></div>';
     el.tl.innerHTML = rows;
   }
 
   function renderInputs() {
     el.arrive.value = state.arrive;
+    el.arrive.style.display = (state.destPinned === false) ? "none" : "";
     el.destname.value = state.dest || "";
     el.buffer.value = state.buffer;
     var n = state.stops.length;
@@ -377,6 +421,7 @@ input[type=datetime-local], input[type=time] { min-width: 0; max-width: 100%; di
       html += '<input class="name" type="text" data-f="name" id="name' + i + '" placeholder="' + (i === 0 ? "Start A name (optional)" : "Name (optional)") + '" value="' + esc(s.name || "") + '" aria-label="Name of stop ' + L + '">';
       html += (n > 1) ? '<button class="rm" type="button" data-rm="' + i + '" aria-label="Remove stop ' + L + '">Remove</button>' : '<span></span>';
       html += '</div>';
+      if (s.pin) { html += '<div class="note">Pinned arrival ' + esc(s.pin.slice(11, 16)) + '</div>'; }
       html += '<div class="row2">';
       if (i === 0) {
         html += '<div class="field"><span class="label">Starting point</span><span class="note" style="padding-top:8px;">You leave from here.</span></div>';
@@ -388,7 +433,7 @@ input[type=datetime-local], input[type=time] { min-width: 0; max-width: 100%; di
       html += '</div>';
     }
     // Final cell: destination X. Name mirrors the field at the top. No time or drive cells.
-    document.getElementById("arrlabel").textContent = "Arrive at " + dl() + " by";
+    document.getElementById("arrlabel").textContent = (state.destPinned === false) ? ("Arrival at " + dl() + " is estimated - tap its row in the timeline to pin it") : ("Arrive at " + dl() + " by");
     html += '<div class="stop" data-x="1"><div class="stop-head"><span class="stop-letter">' + dl() + '</span>';
     html += '<input class="name" type="text" id="xname" placeholder="Destination ' + dl() + ' name (optional)" value="' + esc(state.dest || "") + '" aria-label="Name of destination ' + dl() + '">';
     html += '<span></span></div></div>';
@@ -426,7 +471,7 @@ input[type=datetime-local], input[type=time] { min-width: 0; max-width: 100%; di
   });
   el.buffer.addEventListener("input", function () { state.buffer = el.buffer.value; save(); renderOutputs(); });
   el.add.addEventListener("click", function () {
-    state.stops.push({ name: "", drive: 15, stay: 5 });
+    state.stops.push({ name: "", drive: 15, stay: 5, pin: "" });
     save(); renderInputs(); renderOutputs();
     var last = document.getElementById("stay" + (state.stops.length - 1));
     if (last) { last.focus(); }
@@ -466,6 +511,7 @@ input[type=datetime-local], input[type=time] { min-width: 0; max-width: 100%; di
     fresh.dest = hit.dest || "";
     fresh.buffer = hit.buffer;
     fresh.stops = JSON.parse(JSON.stringify(hit.stops));
+    for (var q = 0; q < fresh.stops.length; q++) { fresh.stops[q].pin = ""; }
     state = fresh;
     renderInputs(); renderOutputs(); renderRecent();
     try { window.scrollTo(0, 0); } catch (e2) {}
@@ -499,14 +545,21 @@ input[type=datetime-local], input[type=time] { min-width: 0; max-width: 100%; di
   }
   function pv(id) { return document.getElementById(id); }
   function pErr(msg) { var e = pv("perr"); if (e) { e.textContent = msg || ""; } }
+  function pinCount(w) {
+    var c = (w.destPinned === false) ? 0 : 1;
+    for (var i = 0; i < w.stops.length; i++) { if (w.stops[i].pin) { c++; } }
+    return c;
+  }
+  function isPinned(w, i) { return (i === w.stops.length) ? (w.destPinned !== false) : !!w.stops[i].pin; }
 
   function renderPanel() {
     var n = work.stops.length, isDest = (pi === n);
     var L = label(pi);
+    var pinned = isPinned(work, pi);
     var h = '<div class="label">' + (isDest ? "Destination " + L : (pi === 0 ? "Start " + L : "Stop " + L)) + '</div>';
     h += '<input class="name" type="text" id="pname" placeholder="' + (isDest ? "Destination name (optional)" : "Name (optional)") + '" value="' + esc(isDest ? (work.dest || "") : (work.stops[pi].name || "")) + '" aria-label="Name">';
     if (isDest) {
-      h += '<div class="field"><span class="label">Arrive by</span><input type="datetime-local" id="pdestarr" value="' + esc(work.arrive) + '"></div>';
+      h += '<div class="field"><span class="label">Arrive by (typing a time pins it)</span><input type="datetime-local" id="pdestarr"></div>';
     } else {
       h += '<div class="row2">';
       if (pi > 0) {
@@ -522,6 +575,7 @@ input[type=datetime-local], input[type=time] { min-width: 0; max-width: 100%; di
       h += '<div class="field"><span class="label">Drive ' + L + ' to ' + label(pi + 1) + ' (min)</span><input type="number" inputmode="numeric" min="0" step="1" id="pdrive" value="' + esc(work.stops[pi].drive) + '"></div>';
       h += '</div>';
     }
+    h += '<div class="btns"><button type="button" data-act="pin"' + (pinned ? ' class="solid"' : '') + '>' + (pinned ? 'Pinned - tap to unpin' : 'Pin arrival time') + '</button></div>';
     h += '<div class="err" id="perr" aria-live="polite"></div>';
     h += '<div class="btns"><button type="button" data-act="addbefore">Add stop before</button>';
     if (!isDest) { h += '<button type="button" data-act="addafter">Add stop after</button>'; }
@@ -535,10 +589,26 @@ input[type=datetime-local], input[type=time] { min-width: 0; max-width: 100%; di
 
   function syncTimes() {
     var c = compute(work);
-    if (!c || pi >= work.stops.length) { return; }
+    if (!c) { return; }
+    var n = work.stops.length;
+    if (pi === n) {
+      var d = pv("pdestarr");
+      if (d && document.activeElement !== d) { d.value = (work.destPinned !== false && work.arrive) ? work.arrive : toLocalInput(new Date(c.T)); }
+      return;
+    }
     var a = pv("parr"), l = pv("plv");
-    if (a && document.activeElement !== a) { a.value = toHM(c.stops[pi].arrive); }
+    if (a && document.activeElement !== a) { a.value = work.stops[pi].pin ? toHM(new Date(work.stops[pi].pin).getTime()) : toHM(c.stops[pi].arrive); }
     if (l && document.activeElement !== l) { l.value = toHM(c.stops[pi].leave); }
+  }
+
+  // After a change, say so if a pin cannot be met.
+  function checkLate() {
+    var c = compute(work);
+    if (!c) { return; }
+    var n = work.stops.length;
+    var late = (pi === n) ? c.dest.late : c.stops[pi].late;
+    if (late > 0.5) { pErr("Cannot make this pin: earliest arrival is " + fmtDur(late) + " after it."); }
+    else { pErr(""); }
   }
 
   function openPanel(i) {
@@ -564,30 +634,29 @@ input[type=datetime-local], input[type=time] { min-width: 0; max-width: 100%; di
     if (t.id === "pname") { if (pi === n) { work.dest = t.value; } else { work.stops[pi].name = t.value; } }
     else if (t.id === "pstay") { work.stops[pi].stay = t.value; syncTimes(); }
     else if (t.id === "pdrive") { work.stops[pi].drive = t.value; syncTimes(); }
-    else if (t.id === "pdestarr") { if (t.value) { work.arrive = t.value; } }
   });
 
+  // Typing a time is a request for a recalculation, so it pins that arrival.
   panel.addEventListener("change", function (e) {
     var t = e.target, c = compute(work);
     if (!c) { return; }
-    var n = work.stops.length, buf = num(work.buffer);
-    if (t.id === "parr") {
+    var n = work.stops.length;
+    if (t.id === "pdestarr") {
+      if (!t.value) { return; }
+      work.arrive = t.value; work.destPinned = true;
+      renderPanel(); checkLate();
+    } else if (t.id === "parr") {
       var ta = fromHM(t.value, c.stops[pi].arrive);
-      var stay = (c.stops[pi].leave - ta) / 60000;
-      if (!isFinite(stay) || stay < 0) { pErr("Arrive must come before leave."); syncTimes(); return; }
-      work.stops[pi].stay = Math.round(stay);
-      pv("pstay").value = work.stops[pi].stay;
-      pErr("");
+      if (!isFinite(ta)) { return; }
+      work.stops[pi].pin = toLocalInput(new Date(ta));
+      renderPanel(); checkLate();
     } else if (t.id === "plv") {
       var tl = fromHM(t.value, c.stops[pi].leave);
-      var nextArr = (pi === n - 1) ? c.T : c.stops[pi + 1].arrive;
-      var drv = (nextArr - tl) / 60000 - buf;
-      if (!isFinite(drv) || drv < 0) { pErr("Too late: leave " + (buf > 0 ? "at least " + (Math.round(buf)) + " min (buffer) " : "") + "before the next arrival."); t.value = toHM(c.stops[pi].leave); return; }
-      work.stops[pi].drive = Math.round(drv);
-      pv("pdrive").value = work.stops[pi].drive;
-      pErr("");
+      if (!isFinite(tl)) { return; }
+      var stayMin = (pi === 0) ? 0 : num(work.stops[pi].stay);
+      work.stops[pi].pin = toLocalInput(new Date(tl - stayMin * 60000));
+      renderPanel(); checkLate();
     }
-    syncTimes();
   });
 
   panel.addEventListener("click", function (e) {
@@ -601,18 +670,35 @@ input[type=datetime-local], input[type=time] { min-width: 0; max-width: 100%; di
       save(); renderInputs(); renderOutputs();
       return;
     }
+    if (act === "pin") {
+      var c = compute(work);
+      if (isPinned(work, pi)) {
+        if (pinCount(work) <= 1) { pErr("At least one stop must stay pinned."); return; }
+        if (pi === n) { work.destPinned = false; } else { work.stops[pi].pin = ""; }
+      } else if (c) {
+        if (pi === n) { work.arrive = toLocalInput(new Date(c.T)); work.destPinned = true; }
+        else { work.stops[pi].pin = toLocalInput(new Date(c.stops[pi].arrive)); }
+      }
+      renderPanel();
+      return;
+    }
     if (act === "remove") {
-      if (n > 1 && pi < n) { work.stops.splice(pi, 1); if (pi > work.stops.length) { pi = work.stops.length; } renderPanel(); }
+      if (n > 1 && pi < n) {
+        work.stops.splice(pi, 1);
+        if (pi > work.stops.length) { pi = work.stops.length; }
+        if (pinCount(work) === 0) { work.destPinned = true; }
+        renderPanel();
+      }
       return;
     }
     if (act === "addafter" && pi < n) {
-      work.stops.splice(pi + 1, 0, { name: "", drive: 15, stay: 5 });
+      work.stops.splice(pi + 1, 0, { name: "", drive: 15, stay: 5, pin: "" });
       pi = pi + 1;
       renderPanel();
       return;
     }
     if (act === "addbefore") {
-      var ns = { name: "", drive: 15, stay: 5 };
+      var ns = { name: "", drive: 15, stay: 5, pin: "" };
       if (pi === 0) { ns.stay = 0; work.stops[0].stay = 5; }
       work.stops.splice(pi, 0, ns);
       renderPanel();
@@ -631,7 +717,7 @@ input[type=datetime-local], input[type=time] { min-width: 0; max-width: 100%; di
       if (i === 0) { lines.push(t + ": leave " + fmtTime(c.stops[i].leave) + " (" + fmtDay(c.stops[i].leave) + ")"); }
       else { lines.push(t + ": arrive " + fmtTime(c.stops[i].arrive) + ", leave " + fmtTime(c.stops[i].leave)); }
     }
-    lines.push(destTitle() + ": arrive by " + fmtTime(c.T) + " (" + fmtDay(c.T) + ")");
+    lines.push(destTitle() + (c.dest.pinned ? ": arrive by " : ": arrive about ") + fmtTime(c.T) + " (" + fmtDay(c.T) + ")");
     var text = lines.join("\n");
     var done = function (ok) {
       el.copy.textContent = ok ? "Copied" : "Copy blocked";
@@ -656,7 +742,7 @@ input[type=datetime-local], input[type=time] { min-width: 0; max-width: 100%; di
       rows.push({ letter: label(i), name: nm(i), ph: "Stop " + label(i), lines: lines, day: dayKey(r.leave) !== xKey ? fmtDay(r.leave) : "" });
     }
     var dn = (state.dest || "").trim();
-    rows.push({ letter: dl(), name: dn, ph: "Destination", lines: [["ARRIVE BY ", fmtTime(c.T), true]], day: dayKey(c.T) !== dayKey(Date.now()) ? fmtDay(c.T) : "" });
+    rows.push({ letter: dl(), name: dn, ph: "Destination", lines: [[c.dest.pinned ? "ARRIVE BY " : "ARRIVE ~ ", fmtTime(c.T), true]], day: dayKey(c.T) !== dayKey(Date.now()) ? fmtDay(c.T) : "" });
     return { rows: rows, title: dn || "Leave By", sub: fmtDay(c.T) };
   }
 
