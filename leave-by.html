@@ -102,6 +102,7 @@ input[type=datetime-local], input[type=time] { min-width: 0; max-width: 100%; di
 .tl-row { cursor: pointer; }
 .tl-row:active { background: var(--faint); }
 .tl-note { display: block; font-size: 10px; letter-spacing: 0.1em; color: var(--ink3); text-transform: uppercase; }
+.tl-times .bad { color: var(--red); font-weight: 500; }
 .tl-note.bad { color: var(--red); font-weight: 500; font-size: 11px; }
 .hint { font-family: var(--mono); font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink3); margin-top: 8px; }
 .ov { position: fixed; inset: 0; background: rgba(20,18,16,0.45); display: none; align-items: flex-end; justify-content: center; z-index: 50; }
@@ -256,7 +257,7 @@ input[type=datetime-local], input[type=time] { min-width: 0; max-width: 100%; di
     return out;
   }
   function snapshot(draft) {
-    return { id: state.id, t: Date.now(), draft: draft, dest: state.dest || "", buffer: state.buffer, stops: JSON.parse(JSON.stringify(state.stops)) };
+    return { id: state.id, t: Date.now(), draft: draft, dest: state.dest || "", buffer: state.buffer, stops: JSON.parse(JSON.stringify(state.stops)).map(function (q) { delete q.delay; return q; }) };
   }
   function upsert(draft) {
     if (!hasContent()) { return; }
@@ -332,7 +333,26 @@ input[type=datetime-local], input[type=time] { min-width: 0; max-width: 100%; di
     }
     var res = [];
     for (i = 0; i < n; i++) { res.push({ arrive: arr[i], leave: lv[i], pinned: isFinite(pins[i]), spare: spare[i], late: late[i] }); }
-    return { T: arr[n], stops: res, dest: { pinned: isFinite(pins[n]), spare: spare[n], late: late[n] } };
+    // What-if delay: you have already left on time; a delay on a drive is absorbed by spare time, then by cutting the
+    // time at the next stops. Anything left over makes the destination late. Not part of the shared image or Recent.
+    var dly = null, anyD = false;
+    for (i = 0; i < n; i++) { if (num(st.stops[i].delay) > 0) { anyD = true; } }
+    if (anyD) {
+      dly = new Array(n + 1);
+      var r = 0;
+      for (i = 0; i < n; i++) {
+        var own = num(st.stops[i].delay), d = r + own, j = i + 1;
+        if (j < n) {
+          var deff = Math.max(0, d - spare[j]);
+          var stj = stayOf(j), cut = Math.min(deff, stj);
+          r = deff - cut;
+          if (d > 0) { dly[j] = { delay: own, shift: deff, cut: cut, stay: stj, resid: r }; }
+        } else if (d > 0) {
+          dly[n] = { delay: own, shift: Math.max(0, d - spare[n]), cut: 0, stay: 0, resid: 0, sparLeft: Math.max(0, spare[n] - d) };
+        }
+      }
+    }
+    return { T: arr[n], stops: res, dest: { pinned: isFinite(pins[n]), spare: spare[n], late: late[n] }, dly: dly };
   }
 
   var el = {
@@ -379,7 +399,17 @@ input[type=datetime-local], input[type=time] { min-width: 0; max-width: 100%; di
     var i, lateMsg = "";
     for (i = 0; i < n; i++) { if (c.stops[i].late > 0.5) { lateMsg = "Can't make " + label(i) + " on time: " + fmtDur(c.stops[i].late) + " late"; break; } }
     if (!lateMsg && c.dest.late > 0.5) { lateMsg = "Can't make " + dl() + " on time: " + fmtDur(c.dest.late) + " late"; }
-    if (lateMsg) { extra += '<div class="sub warn">' + esc(lateMsg) + '</div>'; }
+    var dmsg = "";
+    if (c.dly) {
+      var xe0 = c.dly[n];
+      if (xe0 && xe0.shift > 0.5) { dmsg = "Delay: can't make " + dl() + " on time, " + fmtDur(c.dest.late + xe0.shift) + " late"; }
+      else {
+        for (i = 1; i < n; i++) { if (c.dly[i] && c.dly[i].cut > 0.5) { dmsg = "Delay absorbed: time at " + label(i) + " cut to " + fmtDur(c.dly[i].stay - c.dly[i].cut); break; } }
+        if (!dmsg) { dmsg = "Delay absorbed by spare time"; }
+      }
+    }
+    if (dmsg) { extra += '<div class="sub warn">' + esc(dmsg) + '</div>'; }
+    else if (lateMsg) { extra += '<div class="sub warn">' + esc(lateMsg) + '</div>'; }
     else {
       var sp = c.dest.spare;
       for (i = 0; i < n; i++) { sp += c.stops[i].spare; }
@@ -393,20 +423,33 @@ input[type=datetime-local], input[type=time] { min-width: 0; max-width: 100%; di
     var rows = "";
     for (i = 0; i < n; i++) {
       var r = c.stops[i];
+      var e = c.dly && c.dly[i];
       var times;
       if (i === 0) {
         times = 'LEAVE <b>' + fmtTime(r.leave) + '</b>';
       } else {
-        times = 'ARRIVE ' + fmtTime(r.arrive) + '<br>LEAVE <b>' + fmtTime(r.leave) + '</b>';
+        var arrTxt = (e && e.shift > 0) ? '<span class="bad">' + fmtTime(r.arrive + e.shift * 60000) + '</span>' : fmtTime(r.arrive);
+        var lvTxt = (e && e.resid > 0) ? '<b class="bad">' + fmtTime(r.leave + e.resid * 60000) + '</b>' : '<b>' + fmtTime(r.leave) + '</b>';
+        times = 'ARRIVE ' + arrTxt + '<br>LEAVE ' + lvTxt;
       }
       if (dayKey(r.leave) !== xKey) { times += '<span class="tl-day">' + esc(fmtDay(r.leave)) + '</span>'; }
-      times += notes(r);
+      if (e) {
+        times += '<span class="tl-note bad">Delay ' + fmtDur(Math.max(e.delay, e.shift)) + '</span>';
+        if (e.cut > 0) { times += '<span class="tl-note bad">Stay ' + fmtDur(e.stay - e.cut) + ' (was ' + fmtDur(e.stay) + ')</span>'; }
+      } else { times += notes(r); }
       rows += '<div class="tl-row" data-row="' + i + '"><span class="tl-letter">' + label(i) + '</span><span class="tl-name">' + (nm(i) ? esc(nm(i)) : '<span style="color:var(--muted)">Stop ' + label(i) + '</span>') + '</span><span class="tl-times">' + times + '</span></div>';
     }
     var dn = (state.dest || "").trim();
-    var xt = 'ARRIVE BY <b>' + fmtTime(c.T) + '</b>';
-    if (dayKey(c.T) !== dayKey(Date.now())) { xt += '<span class="tl-day">' + esc(fmtDay(c.T)) + '</span>'; }
-    xt += notes(c.dest);
+    var xe = c.dly && c.dly[n];
+    var xT = (xe && xe.shift > 0) ? c.T + xe.shift * 60000 : c.T;
+    var xt = 'ARRIVE BY ' + ((xe && xe.shift > 0) ? '<b class="bad">' : '<b>') + fmtTime(xT) + '</b>';
+    if (dayKey(xT) !== dayKey(Date.now())) { xt += '<span class="tl-day">' + esc(fmtDay(xT)) + '</span>'; }
+    if (xe) {
+      if (xe.delay > 0) { xt += '<span class="tl-note bad">Delay ' + fmtDur(xe.delay) + '</span>'; }
+      var totLate = c.dest.late + xe.shift;
+      if (totLate > 0.5) { xt += '<span class="tl-note bad">Late ' + fmtDur(totLate) + '</span>'; }
+      else if (xe.sparLeft > 0.5) { xt += '<span class="tl-note bad">' + fmtDur(xe.sparLeft) + ' spare</span>'; }
+    } else { xt += notes(c.dest); }
     rows += '<div class="tl-row" data-row="' + n + '"><span class="tl-letter">' + dl() + '</span><span class="tl-name">' + (dn ? esc(dn) : '<span style="color:var(--muted)">Destination</span>') + '</span><span class="tl-times">' + xt + '</span></div>';
     el.tl.innerHTML = rows;
   }
@@ -515,7 +558,7 @@ input[type=datetime-local], input[type=time] { min-width: 0; max-width: 100%; di
     fresh.dest = hit.dest || "";
     fresh.buffer = hit.buffer;
     fresh.stops = JSON.parse(JSON.stringify(hit.stops));
-    for (var q = 0; q < fresh.stops.length; q++) { fresh.stops[q].pin = ""; }
+    for (var q = 0; q < fresh.stops.length; q++) { fresh.stops[q].pin = ""; fresh.stops[q].delay = ""; }
     state = fresh;
     renderInputs(); renderOutputs(); renderRecent();
     try { window.scrollTo(0, 0); } catch (e2) {}
@@ -582,6 +625,10 @@ input[type=datetime-local], input[type=time] { min-width: 0; max-width: 100%; di
       h += '</div>';
     }
     if (pi < n) { h += '<div class="btns" id="clearwrap"' + (hasSet ? '' : ' style="display:none;"') + '><button type="button" data-act="clearpin">Clear the time I set</button></div>'; }
+    if (!isDest) {
+      var dv = num(work.stops[pi].delay);
+      h += '<div class="field"><span class="label">Delay on drive ' + L + ' to ' + label(pi + 1) + ' (min)</span><div style="display:flex;gap:8px;"><input type="number" inputmode="numeric" min="0" step="1" id="pdelay" placeholder="0" value="' + (dv > 0 ? esc(work.stops[pi].delay) : '') + '"><button type="button" data-act="cleardelay" id="cleardelay" style="flex:0 0 auto;' + (dv > 0 ? '' : 'display:none;') + '">Clear delay</button></div></div>';
+    }
     h += '<div class="err" id="perr" aria-live="polite"></div>';
     h += '<div class="btns"><button type="button" data-act="addbefore">Add stop before</button>';
     if (!isDest) { h += '<button type="button" data-act="addafter">Add stop after</button>'; }
@@ -617,6 +664,14 @@ input[type=datetime-local], input[type=time] { min-width: 0; max-width: 100%; di
       spare += c.stops[i].spare;
     }
     if (!late && c.dest.late > 0.5) { late = c.dest.late; where = label(n); }
+    if (c.dly) {
+      var xe = c.dly[n], msg = "";
+      if (xe && xe.shift > 0.5) { msg = "Delay: " + fmtDur(c.dest.late + xe.shift) + " late at " + label(n) + "."; }
+      else { for (i = 1; i < n; i++) { if (c.dly[i] && c.dly[i].cut > 0.5) { msg = "Delay absorbed: time at " + label(i) + " cut to " + fmtDur(c.dly[i].stay - c.dly[i].cut) + "."; break; } } }
+      if (!msg) { msg = "Delay absorbed by spare time."; }
+      pErr(msg);
+      return;
+    }
     if (late > 0.5) { pErr("Not possible: " + fmtDur(late) + " late at " + where + "."); }
     else if (spare > 0.5) { pErr(fmtDur(spare) + " to spare."); }
     else { pErr(""); }
@@ -645,6 +700,7 @@ input[type=datetime-local], input[type=time] { min-width: 0; max-width: 100%; di
     if (t.id === "pname") { if (pi === n) { work.dest = t.value; } else { work.stops[pi].name = t.value; } }
     else if (t.id === "pstay") { work.stops[pi].stay = t.value; syncTimes(); }
     else if (t.id === "pdrive") { work.stops[pi].drive = t.value; syncTimes(); }
+    else if (t.id === "pdelay") { work.stops[pi].delay = t.value; var cb = pv("cleardelay"); if (cb) { cb.style.display = num(t.value) > 0 ? "" : "none"; } checkLate(); }
   });
 
   function showClear() { var w = pv("clearwrap"); if (w) { w.style.display = ""; } }
@@ -682,6 +738,11 @@ input[type=datetime-local], input[type=time] { min-width: 0; max-width: 100%; di
       closePanel();
       save(); renderInputs(); renderOutputs();
       try { window.scrollTo(0, 0); } catch (e1) {}
+      return;
+    }
+    if (act === "cleardelay") {
+      if (pi < n) { work.stops[pi].delay = ""; }
+      renderPanel(); checkLate();
       return;
     }
     if (act === "clearpin") {
