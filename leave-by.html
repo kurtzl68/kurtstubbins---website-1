@@ -629,7 +629,7 @@ input[type=datetime-local], input[type=time] { min-width: 0; max-width: 100%; di
     if (pi < n) { h += '<div class="btns" id="clearwrap"' + (hasSet ? '' : ' style="display:none;"') + '><button type="button" data-act="clearpin">Clear the time I set</button></div>'; }
     if (!isDest) {
       var dv = num(work.stops[pi].delay);
-      h += '<div class="btns"><button type="button" data-act="adddelay" id="adddelay">' + delayLabel(dv) + '</button><button type="button" data-act="cleardelay" id="cleardelay" style="' + (dv > 0 ? '' : 'display:none;') + '">Clear delay</button></div>';
+      h += '<div class="btns"><button type="button" data-act="adddelay" id="adddelay">' + delayLabel(dv) + '</button></div><div class="btns" id="cleardelaywrap" style="' + (dv > 0 ? '' : 'display:none;') + '"><button type="button" data-act="cleardelay" id="cleardelay">Clear delay</button></div>';
     }
     h += '<div class="err" id="perr" aria-live="polite"></div>';
     h += '<div class="btns"><button type="button" data-act="addbefore">Add stop before</button>';
@@ -746,7 +746,7 @@ input[type=datetime-local], input[type=time] { min-width: 0; max-width: 100%; di
         var nd = num(work.stops[pi].delay) + 5;
         work.stops[pi].delay = nd;
         b.textContent = delayLabel(nd);
-        var cd2 = pv("cleardelay"); if (cd2) { cd2.style.display = ""; }
+        var cd2 = pv("cleardelaywrap"); if (cd2) { cd2.style.display = ""; }
         checkLate();
       }
       return;
