@@ -601,8 +601,6 @@ input[type=datetime-local], input[type=time] { min-width: 0; max-width: 100%; di
   }
   function pv(id) { return document.getElementById(id); }
   function pErr(msg) { var e = pv("perr"); if (e) { e.textContent = msg || ""; } }
-  function delayLabel(m) { return m > 0 ? "Delay " + fmtDur(m) + " - add 5 min" : "Add delay (5 min)"; }
-
   function renderPanel() {
     var n = work.stops.length, isDest = (pi === n);
     var L = label(pi);
@@ -629,7 +627,7 @@ input[type=datetime-local], input[type=time] { min-width: 0; max-width: 100%; di
     if (pi < n) { h += '<div class="btns" id="clearwrap"' + (hasSet ? '' : ' style="display:none;"') + '><button type="button" data-act="clearpin">Clear the time I set</button></div>'; }
     if (!isDest) {
       var dv = num(work.stops[pi].delay);
-      h += '<div class="btns"><button type="button" data-act="adddelay" id="adddelay">' + delayLabel(dv) + '</button></div><div class="btns" id="cleardelaywrap" style="' + (dv > 0 ? '' : 'display:none;') + '"><button type="button" data-act="cleardelay" id="cleardelay">Clear delay</button></div>';
+      h += '<div class="field"><span class="label">Delay on drive ' + L + ' to ' + label(pi + 1) + ' (min)</span><div style="display:flex;gap:8px;"><input type="number" inputmode="numeric" min="0" step="1" id="pdelay" placeholder="0" value="' + (dv > 0 ? esc(work.stops[pi].delay) : '') + '"><button type="button" data-act="cleardelay" id="cleardelay" style="flex:0 0 auto;' + (dv > 0 ? '' : 'display:none;') + '">Clear delay</button></div></div>';
     }
     h += '<div class="err" id="perr" aria-live="polite"></div>';
     h += '<div class="btns"><button type="button" data-act="addbefore">Add stop before</button>';
@@ -702,6 +700,7 @@ input[type=datetime-local], input[type=time] { min-width: 0; max-width: 100%; di
     if (t.id === "pname") { if (pi === n) { work.dest = t.value; } else { work.stops[pi].name = t.value; } }
     else if (t.id === "pstay") { work.stops[pi].stay = t.value; syncTimes(); }
     else if (t.id === "pdrive") { work.stops[pi].drive = t.value; syncTimes(); }
+    else if (t.id === "pdelay") { work.stops[pi].delay = t.value; var cb = pv("cleardelay"); if (cb) { cb.style.display = num(t.value) > 0 ? "" : "none"; } checkLate(); }
   });
 
   function showClear() { var w = pv("clearwrap"); if (w) { w.style.display = ""; } }
@@ -739,16 +738,6 @@ input[type=datetime-local], input[type=time] { min-width: 0; max-width: 100%; di
       closePanel();
       save(); renderInputs(); renderOutputs();
       try { window.scrollTo(0, 0); } catch (e1) {}
-      return;
-    }
-    if (act === "adddelay") {
-      if (pi < n) {
-        var nd = num(work.stops[pi].delay) + 5;
-        work.stops[pi].delay = nd;
-        b.textContent = delayLabel(nd);
-        var cd2 = pv("cleardelaywrap"); if (cd2) { cd2.style.display = ""; }
-        checkLate();
-      }
       return;
     }
     if (act === "cleardelay") {
