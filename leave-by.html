@@ -581,7 +581,7 @@ input[type=datetime-local], input[type=time] { min-width: 0; max-width: 100%; di
       h += '<div class="field"><span class="label">Drive ' + L + ' to ' + label(pi + 1) + ' (min)</span><input type="number" inputmode="numeric" min="0" step="1" id="pdrive" value="' + esc(work.stops[pi].drive) + '"></div>';
       h += '</div>';
     }
-    if (hasSet) { h += '<div class="btns"><button type="button" data-act="clearpin">Clear the time I set</button></div>'; }
+    if (pi < n) { h += '<div class="btns" id="clearwrap"' + (hasSet ? '' : ' style="display:none;"') + '><button type="button" data-act="clearpin">Clear the time I set</button></div>'; }
     h += '<div class="err" id="perr" aria-live="polite"></div>';
     h += '<div class="btns"><button type="button" data-act="addbefore">Add stop before</button>';
     if (!isDest) { h += '<button type="button" data-act="addafter">Add stop after</button>'; }
@@ -647,7 +647,9 @@ input[type=datetime-local], input[type=time] { min-width: 0; max-width: 100%; di
     else if (t.id === "pdrive") { work.stops[pi].drive = t.value; syncTimes(); }
   });
 
-  // Typing a time is a request for a recalculation, so it pins that arrival.
+  function showClear() { var w = pv("clearwrap"); if (w) { w.style.display = ""; } }
+
+  // Typing a time is a request for a recalculation. The panel is never rebuilt here, so the time picker stays open.
   panel.addEventListener("change", function (e) {
     var t = e.target, c = compute(work);
     if (!c) { return; }
@@ -655,18 +657,18 @@ input[type=datetime-local], input[type=time] { min-width: 0; max-width: 100%; di
     if (t.id === "pdestarr") {
       if (!t.value) { return; }
       work.arrive = t.value;
-      renderPanel(); checkLate();
+      checkLate();
     } else if (t.id === "parr") {
       var ta = fromHM(t.value, c.stops[pi].arrive);
       if (!isFinite(ta)) { return; }
       work.stops[pi].pin = toLocalInput(new Date(ta));
-      renderPanel(); checkLate();
+      showClear(); syncTimes(); checkLate();
     } else if (t.id === "plv") {
       var tl = fromHM(t.value, c.stops[pi].leave);
       if (!isFinite(tl)) { return; }
       var stayMin = (pi === 0) ? 0 : num(work.stops[pi].stay);
       work.stops[pi].pin = toLocalInput(new Date(tl - stayMin * 60000));
-      renderPanel(); checkLate();
+      showClear(); syncTimes(); checkLate();
     }
   });
 
