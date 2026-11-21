@@ -288,7 +288,7 @@
 
   function loadFile(f, it, screen) {
     if (!it) it = S.items[S.qi] || null;
-    screen = screen || 'corners';
+    screen = screen || 'corners'; S.loading = true;
     setStatus('Loading photo...', '', 0.1);
     var url = URL.createObjectURL(f);
     var img = new Image();
@@ -299,7 +299,7 @@
         var cw = Math.max(1, Math.round(w * sc)), ch = Math.max(1, Math.round(h * sc));
         var c = document.createElement('canvas'); c.width = cw; c.height = ch;
         c.getContext('2d').drawImage(img, 0, 0, cw, ch);
-        URL.revokeObjectURL(url);
+        URL.revokeObjectURL(url); img.onerror = null; img.src = '';
         S.src = c; S.W = cw; S.H = ch;
         S.name = (f.name || 'photo').replace(/\.[^.]*$/, '') || 'photo';
         var ps = Math.min(1, 1000 / Math.max(cw, ch));
@@ -328,13 +328,15 @@
         if (sc < 1) msg += ' Reduced to ' + cw + ' x ' + ch + ' to fit the iPhone.';
         setStatus(msg, 'ok');
         $('prevBtn').classList.remove('acc');
+        S.loading = false;
         goScreen(screen);
         updateSelUI();
       } catch (e) {
+        S.loading = false;
         setStatus('Could not open that photo: ' + e.message, 'err');
       }
     };
-    img.onerror = function () { URL.revokeObjectURL(url); setStatus('Could not open that photo. Try a JPEG.', 'err'); };
+    img.onerror = function () { S.loading = false; URL.revokeObjectURL(url); setStatus('Could not open that photo. Try a JPEG.', 'err'); };
     img.src = url;
   }
 
@@ -1197,8 +1199,10 @@
       if (tk !== S.thk || i >= list.length) return;
       var it = list[i];
       if (it.thumb) { next(i + 1); return; }
+      if (S.loading || (S.scr === 'sSave' && !S.blob)) { setTimeout(function () { next(i); }, 500); return; }
       var url = URL.createObjectURL(it.file), im = new Image();
-      function go() { URL.revokeObjectURL(url); galRefresh(); setTimeout(function () { next(i + 1); }, 0); }
+      var fin = false;
+      function go() { if (fin) return; fin = true; URL.revokeObjectURL(url); im.onerror = null; im.onload = null; im.src = ''; galRefresh(); setTimeout(function () { next(i + 1); }, 0); }
       im.onload = function () {
         try {
           var c = document.createElement('canvas'), sc = Math.min(1, 160 / Math.max(im.naturalWidth, im.naturalHeight));
@@ -1221,18 +1225,29 @@
     var it = curItem(); if (it) it.saved = true;
     if (advance && S.items.length > 1) { var n = nextUnsaved(); if (n < 0) goScreen('gallery'); else openIndex(n, 'corners'); }
   }
+  function zap(c) { if (c) { try { c.width = 0; c.height = 0; } catch (e) {} } }
+  function freeBig() {
+    // iPhone Safari has a small canvas memory budget: drop every large buffer before the next photo loads
+    zap(S.src); zap(S.proxy); zap(S.outCanvas); zap(S.tcanvas); zap(S.prevCanvas);
+    S.src = null; S.proxy = null; S.proxyData = null; S.outCanvas = null; S.tcanvas = null; S.prevCanvas = null;
+    S.tbase = null; S.tbase0 = null; S.blob = null; S.exif = null;
+    if (S.thumbUrl) { URL.revokeObjectURL(S.thumbUrl); S.thumbUrl = null; }
+    $('thumb').removeAttribute('src');
+    cv.width = 1; cv.height = 1; tv.width = 1; tv.height = 1;
+  }
   function openIndex(i, screen) {
     syncItem();
     S.token++; S.ttoken++; S.rtk++; S.loadedIdx = -1;
+    if (S.src) freeBig();
     S.qi = i;
-    if (screen === 'gallery' && !S.src) { goScreen('gallery'); return; }
+    if (screen === 'gallery') { goScreen('gallery'); return; }
     loadFile(S.items[i].file, S.items[i], screen || 'corners');
   }
   var SCRS = ['corners', 'tune', 'save'];
   function scrName() { return S.scr === 'sTune' ? 'tune' : S.scr === 'sSave' ? 'save' : 'corners'; }
   function goScreen(s) {
     S.prev = false; $('prevBtn').classList.remove('acc');
-    if (s === 'gallery') { syncItem(); S.token++; S.ttoken++; S.rtk++; show('sGallery'); renderGallery(); return; }
+    if (s === 'gallery') { syncItem(); S.token++; S.ttoken++; S.rtk++; S.loadedIdx = -1; if (S.src) freeBig(); show('sGallery'); renderGallery(); return; }
     if (s === 'tune') { syncItem(); enterTune(); return; }
     if (s === 'save') { syncItem(); S.from = S.scr === 'sTune' ? 'sTune' : 'sCorners'; show('sSave'); buildOutput(); return; }
     S.token++; S.ttoken++; S.rtk++; S.from = 'sCorners'; show('sCorners');
@@ -1251,7 +1266,7 @@
   }
   $('navPrev').addEventListener('click', function () { stepPhoto(-1); });
   $('navNext').addEventListener('click', function () { stepPhoto(1); });
-  $('navCnt').addEventListener('click', function () { if (S.src) goScreen('gallery'); });
+  $('navCnt').addEventListener('click', function () { if (S.items.length) goScreen('gallery'); });
   Array.prototype.forEach.call(document.querySelectorAll('#nav .dt'), function (b) {
     b.addEventListener('click', function () { if (S.src) goScreen(b.getAttribute('data-s')); });
   });
