@@ -672,15 +672,22 @@ cv.addEventListener('pointercancel', function (e) { S.press = null; S.drag = nul
 
 function tap(pr) {
   if (count() === 0) { $('file').click(); return; }
+  var now = Date.now(), tid = pr.k >= 0 ? S.slots[pr.k] : null;
+  var dbl = tid !== null && S.lastTapId === tid && now - S.lastTapAt < 350;
+  S.lastTapAt = now; S.lastTapId = tid;
+  if (dbl) {
+    if (S.selMode) { if (S.sel.has(tid)) S.sel.delete(tid); else S.sel.add(tid); }
+    S.lastTapId = null; openPop(tid); invalidate(); return;
+  }
   if (S.selMode) {
+    closePop();
     if (pr.k >= 0) {
-      var id = S.slots[pr.k];
-      if (S.sel.has(id)) S.sel.delete(id); else S.sel.add(id);
-      status(S.sel.size + ' selected - drag one of them to move the group.');
+      if (S.sel.has(tid)) S.sel.delete(tid); else S.sel.add(tid);
+      status(S.sel.size + ' selected - drag one to move the group. Double-tap a tile for its menu.');
     } else { S.sel.clear(); status('Selection cleared.'); }
     invalidate(); return;
   }
-  if (pr.k >= 0) { var tid = S.slots[pr.k]; if (S.popId === tid) closePop(); else openPop(tid); }
+  if (pr.k >= 0) { if (S.popId === tid) closePop(); else openPop(tid); }
   else closePop();
   invalidate();
 }
@@ -700,7 +707,7 @@ function syncUi() {
 }
 function toggleSelect() {
   S.selMode = !S.selMode; S.sel.clear(); closePop(); syncUi(); invalidate();
-  status(S.selMode ? 'Select mode: tap tiles, or drag a box on empty space. Then drag one selected tile to move them all.' : 'Select mode off.');
+  status(S.selMode ? 'Select mode: tap tiles, or drag a box on empty space, then drag one to move them all. Double-tap a tile for its menu.' : 'Select mode off.');
 }
 function enterFull() {
   if (!count()) { status('Add photos first.', true); return; }
