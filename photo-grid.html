@@ -87,7 +87,8 @@
     <button class="b pad-only" data-cmd="full">FULL SCREEN</button>
     <button class="b pad-only" data-cmd="fit">FIT GRID</button>
     <button class="b" data-cmd="undo" id="bUndo">UNDO</button>
-    <button class="b" data-cmd="select" id="bSel">SELECT</button>
+    <button class="b" data-cmd="redo" id="bRedo">REDO</button>
+    <button class="b pad-only" data-cmd="grid" id="bGrid">GRID: ON</button>
     <button class="b pri" data-cmd="export">EXPORT<span class="lg">&nbsp;PNG</span></button>
     <button class="b pad-only" data-cmd="clear" id="bClear">CLEAR</button>
     <button class="b pho" data-cmd="more">MORE</button>
@@ -122,7 +123,7 @@
 <div id="sheet" hidden><div class="card">
   <div class="row"><span class="lbl">COLUMNS</span><span class="step"><button data-cmd="cols-">-</button><i class="colsVal">2</i><button data-cmd="cols+">+</button></span>
   <span class="lbl">ROWS</span><span class="step"><button data-cmd="rows-">-</button><i class="rowsVal">2</i><button data-cmd="rows+">+</button></span></div>
-  <div class="row"><button class="b" data-cmd="full">FULL SCREEN</button><button class="b" data-cmd="fit">FIT GRID</button></div>
+  <div class="row"><button class="b" data-cmd="full">FULL SCREEN</button><button class="b" data-cmd="fit">FIT GRID</button><button class="b" data-cmd="grid" id="bGrid2">GRID: ON</button></div>
   <div class="row"><button class="b err" data-cmd="clear" id="bClear2">CLEAR</button><button class="b" data-cmd="closesheet">CLOSE</button></div>
   <div class="mono">Up to 6 x 6 on iPhone.</div>
 </div></div>
@@ -150,8 +151,8 @@ var cv = $('cv'), ctx = cv.getContext('2d');
 
 var S = {
   cols: 2, rows: 2, slots: [null, null, null, null], reg: {}, nextId: 1, undo: [],
-  sel: new Set(), selMode: false, popId: null, full: false, busy: false,
-  drag: null, press: null, lastTap: 0
+  sel: new Set(), selMode: true, redo: [], showGrid: true, popId: null, full: false, busy: false,
+  drag: null, press: null, lastTap: 0, lastTapAt: 0, lastTapId: null, lastToggled: false
 };
 var L = null, dpr = 1, cssW = 0, cssH = 0, dirty = false, clearTimer = 0, expBlob = null, expUrl = '';
 
@@ -327,16 +328,14 @@ function snapshot() {
   Object.keys(S.reg).forEach(function (k) { var v = S.reg[k]; xf[k] = [v.rot, v.mx, v.my, v.ax, v.ay]; });
   return { cols: S.cols, rows: S.rows, slots: S.slots.slice(), xf: xf };
 }
-function pushUndo() { S.undo.push(snapshot()); if (S.undo.length > UNDO_LIMIT) S.undo.shift(); }
+function pushUndo() { S.undo.push(snapshot()); if (S.undo.length > UNDO_LIMIT) S.undo.shift(); S.redo = []; }
 function prune() {
   var keep = {};
   S.slots.forEach(function (v) { if (v !== null) keep[v] = 1; });
-  S.undo.forEach(function (u) { u.slots.forEach(function (v) { if (v !== null) keep[v] = 1; }); });
+  S.undo.concat(S.redo).forEach(function (u) { u.slots.forEach(function (v) { if (v !== null) keep[v] = 1; }); });
   Object.keys(S.reg).forEach(function (k) { if (!keep[k]) delete S.reg[k]; });
 }
-function undo() {
-  if (S.busy || !S.undo.length) { status('Nothing to undo.'); return; }
-  var u = S.undo.pop();
+function restoreSnap(u) {
   S.cols = u.cols; S.rows = u.rows; S.slots = u.slots.slice();
   Object.keys(u.xf).forEach(function (k) {
     var v = S.reg[k]; if (!v) return;
@@ -344,7 +343,17 @@ function undo() {
   });
   S.sel.forEach(function (id) { if (S.slots.indexOf(id) < 0) S.sel.delete(id); });
   if (S.slots.indexOf(S.popId) < 0) S.popId = null;
-  prune(); syncUi(); if (S.popId !== null) { L = computeView(); refreshPop(); } invalidate(); status('Undone.');
+  prune(); syncUi(); if (S.popId !== null) { L = computeView(); refreshPop(); } invalidate();
+}
+function undo() {
+  if (S.busy || !S.undo.length) { status('Nothing to undo.'); return; }
+  S.redo.push(snapshot()); if (S.redo.length > UNDO_LIMIT) S.redo.shift();
+  restoreSnap(S.undo.pop()); status('Undone.');
+}
+function redo() {
+  if (S.busy || !S.redo.length) { status('Nothing to redo.'); return; }
+  S.undo.push(snapshot()); if (S.undo.length > UNDO_LIMIT) S.undo.shift();
+  restoreSnap(S.redo.pop()); status('Redone.');
 }
 
 /* ---------------------------------------------------------------- editing */
@@ -480,9 +489,13 @@ function render() {
   L = computeView();
   var i, d = S.drag, moving = {};
   if (d && d.ids) d.ids.forEach(function (id) { moving[id] = 1; });
-  if (!S.full) {                                       /* outlines for empty slots */
+  if (!S.full) {                                       /* outlines for empty slots (GRID toggle; new row/column always while dragging) */
     ctx.save(); ctx.strokeStyle = cssVar('--label'); ctx.globalAlpha = .5; ctx.setLineDash([4, 4]); ctx.lineWidth = 1;
-    for (i = 0; i < S.slots.length; i++) if (S.slots[i] === null) { var c = L.cells[i]; ctx.strokeRect(c[0] + 3.5, c[1] + 3.5, c[2] - 7, c[3] - 7); }
+    for (i = 0; i < S.slots.length; i++) if (S.slots[i] === null) {
+      var isNew = d && d.orig && (i % S.cols >= d.orig.cols || Math.floor(i / S.cols) >= d.orig.rows);
+      if (!S.showGrid && !isNew) continue;
+      var c = L.cells[i]; ctx.strokeRect(c[0] + 3.5, c[1] + 3.5, c[2] - 7, c[3] - 7);
+    }
     ctx.restore();
   }
   for (i = 0; i < S.slots.length; i++) {
@@ -491,11 +504,10 @@ function render() {
   }
   if (!S.full) {
     ctx.save(); ctx.strokeStyle = cssVar('--text'); ctx.lineWidth = 3;
-    if (S.selMode) {
-      ctx.setLineDash([7, 4]);
-      for (i = 0; i < S.slots.length; i++) if (S.slots[i] !== null && S.sel.has(S.slots[i]) && !moving[S.slots[i]]) { var q = L.rects[i]; ctx.strokeRect(q[0] + 1.5, q[1] + 1.5, q[2] - 3, q[3] - 3); }
-    } else if (S.popId !== null && !moving[S.popId]) {
-      var k = slotOf(S.popId); if (k >= 0) { var p = L.rects[k]; ctx.setLineDash([7, 4]); ctx.strokeRect(p[0] + 1.5, p[1] + 1.5, p[2] - 3, p[3] - 3); }
+    ctx.setLineDash([7, 4]);
+    for (i = 0; i < S.slots.length; i++) if (S.slots[i] !== null && S.sel.has(S.slots[i]) && !moving[S.slots[i]]) { var q = L.rects[i]; ctx.strokeRect(q[0] + 1.5, q[1] + 1.5, q[2] - 3, q[3] - 3); }
+    if (S.popId !== null && !moving[S.popId]) {
+      var k = slotOf(S.popId); if (k >= 0) { var p = L.rects[k]; ctx.strokeRect(p[0] + 1.5, p[1] + 1.5, p[2] - 3, p[3] - 3); }
     }
     ctx.restore();
   }
@@ -581,7 +593,47 @@ function cellAt(p) {
   }
   return null;
 }
+var touches = {}, gest = { max: 0, t0: 0, moved: false };
+function touchCount() { return Object.keys(touches).length; }
+function dragRestore(d) {            /* put the grid back to what it was before this drag grew it */
+  if (!d || !d.orig) return;
+  var o = d.orig; S.slots = o.slots; S.cols = o.cols; S.rows = o.rows; d.src = o.src; d.orig = null;
+}
+function dragGrow(d, wantC, wantR) { /* add one column and/or row while dragging past the edge (sticky until release) */
+  var o = d.orig || { slots: S.slots, cols: S.cols, rows: S.rows, src: d.src };
+  var nc = S.cols + (wantC ? 1 : 0), nr = S.rows + (wantR ? 1 : 0);
+  var n = reshapeSlots(S.slots, S.cols, S.rows, nc, nr); if (!n) return false;
+  var r = Math.floor(d.src / S.cols), c = d.src % S.cols;
+  d.orig = o; S.slots = n; S.cols = nc; S.rows = nr; d.src = r * nc + c;
+  L = computeView(); return true;
+}
+function trimPlan(slots, cols, rows, minC, minR) {   /* drop a new column / row that ended up unused */
+  var i, empty;
+  for (;;) {
+    if (cols <= minC) break;
+    empty = true; for (i = 0; i < rows; i++) if (slots[i * cols + cols - 1] !== null) { empty = false; break; }
+    if (!empty) break;
+    slots = reshapeSlots(slots, cols, rows, cols - 1, rows); cols--;
+  }
+  while (rows > minR) {
+    empty = true; for (i = 0; i < cols; i++) if (slots[(rows - 1) * cols + i] !== null) { empty = false; break; }
+    if (!empty) break;
+    slots = slots.slice(0, slots.length - cols); rows--;
+  }
+  return { slots: slots, cols: cols, rows: rows };
+}
+function fingerGesture() {           /* 2-finger tap = undo, 3-finger tap = redo */
+  if (gest.max >= 2 && !gest.moved && Date.now() - gest.t0 < 450) { if (gest.max === 2) undo(); else redo(); }
+  gest.max = 0; gest.moved = false;
+}
 cv.addEventListener('pointerdown', function (e) {
+  if (e.pointerType === 'touch') {
+    var pt0 = pt(e);
+    if (!touchCount()) { gest.max = 0; gest.moved = false; gest.t0 = Date.now(); }
+    touches[e.pointerId] = { x: pt0.x, y: pt0.y };
+    gest.max = Math.max(gest.max, touchCount());
+    if (touchCount() >= 2) { var dd = S.drag; dragRestore(dd); S.press = null; S.drag = null; closePop(); invalidate(); return; }
+  }
   if (S.busy) return;
   if (S.full) {
     var now = Date.now();
@@ -594,6 +646,8 @@ cv.addEventListener('pointerdown', function (e) {
   S.press = { x: p.x, y: p.y, k: hitTile(p), moved: false, pid: e.pointerId };
 });
 cv.addEventListener('pointermove', function (e) {
+  var tp = touches[e.pointerId];
+  if (tp) { var q = pt(e); if (Math.abs(q.x - tp.x) + Math.abs(q.y - tp.y) > 24) gest.moved = true; }
   var pr = S.press; if (!pr || pr.pid !== e.pointerId) return;
   var p = pt(e);
   if (!pr.moved) {
@@ -602,26 +656,32 @@ cv.addEventListener('pointermove', function (e) {
     if (pr.k >= 0) {
       var id = S.slots[pr.k];
       closePop();
-      if (S.selMode && S.sel.has(id) && S.sel.size >= 2) {
+      if (S.sel.has(id) && S.sel.size >= 2) {
         var ids = []; S.sel.forEach(function (v) { if (S.slots.indexOf(v) >= 0) ids.push(v); });
-        S.drag = { mode: 'group', id: id, ids: ids, src: pr.k, dx: 0, dy: 0, hover: null, px: pr.x, py: pr.y };
+        S.drag = { mode: 'group', id: id, ids: ids, src: pr.k, dx: 0, dy: 0, hover: null, px: pr.x, py: pr.y, orig: null };
       } else {
-        if (S.selMode) S.sel.clear();
-        S.drag = { mode: 'tile', id: id, ids: [id], src: pr.k, dx: 0, dy: 0, hover: null, px: pr.x, py: pr.y };
+        S.sel.clear();
+        S.drag = { mode: 'tile', id: id, ids: [id], src: pr.k, dx: 0, dy: 0, hover: null, px: pr.x, py: pr.y, orig: null };
       }
-    } else if (S.selMode) {
+    } else {
       S.drag = { mode: 'box', ids: [], x0: pr.x, y0: pr.y, x1: p.x, y1: p.y };
-    } else { S.press = null; return; }
+    }
   }
   var d = S.drag; if (!d) return;
   if (d.mode === 'box') { d.x1 = p.x; d.y1 = p.y; invalidate(); return; }
   d.dx = p.x - d.px; d.dy = p.y - d.py;
-  var h = cellAt(p), changed = h !== d.hover; d.hover = h;
+  var h = cellAt(p);
+  if (h === null) {                                    /* beyond the right / bottom edge: open a new column / row */
+    var re = 0, be = 0; L.cells.forEach(function (c) { re = Math.max(re, c[0] + c[2]); be = Math.max(be, c[1] + c[3]); });
+    var wc = p.x > re && S.cols < MAX_N && !(d.orig && S.cols > d.orig.cols), wr = p.y > be && S.rows < MAX_N && !(d.orig && S.rows > d.orig.rows);
+    if (wc || wr) { if (dragGrow(d, wc, wr)) { p = pt(e); h = cellAt(p); } }
+  }
+  var changed = h !== d.hover; d.hover = h;
   if (changed) dragStatus(d);
   invalidate();
 });
 function dragStatus(d) {
-  if (d.hover === null) { status('Outside the grid - releasing here puts it back.'); return; }
+  if (d.hover === null) { status('Outside the grid - releasing here puts it back. Drag past the right or bottom edge to add a column or row.'); return; }
   if (d.hover === d.src) { status(d.mode === 'group' ? 'Drop the group on another cell to move it.' : 'Drop on another cell to move it.'); return; }
   if (d.mode === 'group') {
     var g = groupPlan(d);
@@ -639,6 +699,7 @@ function groupPlan(d) {
   return planGroupMove(S.slots, S.cols, S.rows, picked, hr - sr, hc - sc);
 }
 function endPress(e) {
+  if (touches[e.pointerId]) { delete touches[e.pointerId]; if (!touchCount()) fingerGesture(); }
   var pr = S.press; if (!pr || pr.pid !== e.pointerId) return;
   S.press = null;
   var d = S.drag; S.drag = null;
@@ -653,42 +714,47 @@ function endPress(e) {
     status(S.sel.size ? S.sel.size + ' selected - drag one of them to move the group.' : 'Nothing selected.');
     invalidate(); return;
   }
-  if (d.hover === null || d.hover === d.src) { status(d.mode === 'group' ? 'Group put back.' : 'Put back.'); invalidate(); return; }
+  if (d.hover === null || d.hover === d.src) { dragRestore(d); status(d.mode === 'group' ? 'Group put back.' : 'Put back.'); L = computeView(); invalidate(); return; }
   if (d.mode === 'group') {
-    var g = groupPlan(d);
-    if (g.err) { status(g.err, true); invalidate(); return; }
+    var g = groupPlan(d), go = d.orig;
+    if (g.err) { dragRestore(d); L = computeView(); status(g.err, true); invalidate(); return; }
+    if (go) { dragRestore(d); g = trimPlan(g.slots, g.cols, g.rows, go.cols, go.rows); }
     pushUndo(); S.slots = g.slots; S.cols = g.cols; S.rows = g.rows; syncUi();
     status('Moved ' + d.ids.length + ' tiles.');
   } else {
-    var pl = planDrop(S.slots, S.cols, S.rows, d.src, d.hover, d.id);
-    if (!pl) { status('That row is full and the grid is already ' + MAX_N + ' columns wide.', true); invalidate(); return; }
-    pushUndo(); S.slots = pl.slots; S.cols = pl.cols; syncUi();
-    status(pl.dir === null ? 'Moved to the empty slot.' : 'Row ' + (Math.floor(d.hover / S.cols) + 1) + ' shifted ' + pl.dir + '.');
+    var pl = planDrop(S.slots, S.cols, S.rows, d.src, d.hover, d.id), erow = Math.floor(d.hover / S.cols) + 1, grown = !!d.orig;
+    var o = d.orig, rows2 = S.rows;
+    if (!pl) { dragRestore(d); L = computeView(); status('That row is full and the grid is already ' + MAX_N + ' columns wide.', true); invalidate(); return; }
+    if (o) { dragRestore(d); pl = trimPlan(pl.slots, pl.cols, rows2, o.cols, o.rows); pl.dir = null; }
+    else pl.rows = S.rows;
+    pushUndo(); S.slots = pl.slots; S.cols = pl.cols; S.rows = pl.rows; syncUi();
+    status(grown ? 'Moved - grid is now ' + S.cols + ' x ' + S.rows + '.' : (pl.dir === null ? 'Moved to the empty slot.' : 'Row ' + erow + ' shifted ' + pl.dir + '.'));
   }
-  invalidate();
+  L = computeView(); invalidate();
 }
 cv.addEventListener('pointerup', endPress);
-cv.addEventListener('pointercancel', function (e) { S.press = null; S.drag = null; invalidate(); });
+cv.addEventListener('pointercancel', function (e) {
+  if (touches[e.pointerId]) { delete touches[e.pointerId]; if (!touchCount()) { gest.max = 0; gest.moved = false; } }
+  dragRestore(S.drag); S.press = null; S.drag = null; L = computeView(); invalidate();
+});
 
 function tap(pr) {
   if (count() === 0) { $('file').click(); return; }
   var now = Date.now(), tid = pr.k >= 0 ? S.slots[pr.k] : null;
   var dbl = tid !== null && S.lastTapId === tid && now - S.lastTapAt < 350;
+  var hadPop = S.popId !== null;
   S.lastTapAt = now; S.lastTapId = tid;
-  if (dbl) {
-    if (S.selMode) { if (S.sel.has(tid)) S.sel.delete(tid); else S.sel.add(tid); }
-    S.lastTapId = null; openPop(tid); invalidate(); return;
+  if (dbl) {                                          /* double-tap: open the menu, selection as it was before the first tap */
+    if (S.lastToggled) { if (S.sel.has(tid)) S.sel.delete(tid); else S.sel.add(tid); }
+    S.lastTapId = null; S.lastToggled = false; openPop(tid); invalidate(); return;
   }
-  if (S.selMode) {
-    closePop();
-    if (pr.k >= 0) {
-      if (S.sel.has(tid)) S.sel.delete(tid); else S.sel.add(tid);
-      status(S.sel.size + ' selected - drag one to move the group. Double-tap a tile for its menu.');
-    } else { S.sel.clear(); status('Selection cleared.'); }
-    invalidate(); return;
-  }
-  if (pr.k >= 0) { if (S.popId === tid) closePop(); else openPop(tid); }
-  else closePop();
+  S.lastToggled = false;
+  if (hadPop) { closePop(); invalidate(); return; }   /* menu open: a tap only closes it */
+  if (tid !== null) {
+    if (S.sel.has(tid)) S.sel.delete(tid); else S.sel.add(tid);
+    S.lastToggled = true;
+    status(S.sel.size + ' selected - drag one to move the group. Double-tap a tile for its menu.');
+  } else { S.sel.clear(); status('Selection cleared.'); }
   invalidate();
 }
 
@@ -702,12 +768,12 @@ function setTheme(t) {
 function syncUi() {
   Array.prototype.forEach.call(document.querySelectorAll('.colsVal'), function (e) { e.textContent = S.cols; });
   Array.prototype.forEach.call(document.querySelectorAll('.rowsVal'), function (e) { e.textContent = S.rows; });
-  $('bSel').className = 'b' + (S.selMode ? ' on' : '');
-  $('bSel').textContent = S.selMode ? 'SELECT: ON' : 'SELECT';
+  ['bGrid', 'bGrid2'].forEach(function (k) { var g = $(k); if (g) g.textContent = S.showGrid ? 'GRID: ON' : 'GRID: OFF'; });
 }
-function toggleSelect() {
-  S.selMode = !S.selMode; S.sel.clear(); closePop(); syncUi(); invalidate();
-  status(S.selMode ? 'Select mode: tap tiles, or drag a box on empty space, then drag one to move them all. Double-tap a tile for its menu.' : 'Select mode off.');
+function toggleGrid() {
+  S.showGrid = !S.showGrid; syncUi(); invalidate();
+  try { localStorage.setItem('pg-grid', S.showGrid ? '1' : '0'); } catch (e) { /* ignore */ }
+  status(S.showGrid ? 'Grid outlines shown.' : 'Grid outlines hidden.');
 }
 function enterFull() {
   if (!count()) { status('Add photos first.', true); return; }
@@ -796,7 +862,8 @@ document.addEventListener('click', function (e) {
     if (c === 'add') $('file').click();
     else if (c === 'theme') setTheme(dark() ? 'light' : 'dark');
     else if (c === 'undo') undo();
-    else if (c === 'select') toggleSelect();
+    else if (c === 'redo') redo();
+    else if (c === 'grid') toggleGrid();
     else if (c === 'full') enterFull();
     else if (c === 'exitfull') exitFull();
     else if (c === 'fit') { closePop(); fitGrid(); $('sheet').hidden = true; }
@@ -858,6 +925,7 @@ if (window.ResizeObserver) new ResizeObserver(function () { resize(); }).observe
 
 buildPad();
 if (PHONE) $('app').appendChild($('pop'));       /* phone: the tile menu sits under the grid, the grid shrinks above it */
+try { S.showGrid = localStorage.getItem('pg-grid') !== '0'; syncUi(); } catch (e) { /* ignore */ }
 try { var th = localStorage.getItem('pg-theme'); if (th === 'light' || th === 'dark') setTheme(th); } catch (e) { /* ignore */ }
 syncUi(); resize();
 window.__pg = { S: S, view: function () { L = computeView(); return L; }, render: render, MAX_N: MAX_N };
