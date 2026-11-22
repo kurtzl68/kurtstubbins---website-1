@@ -531,7 +531,11 @@ function render() {
   if (count() === 0 && !S.full) {
     ctx.fillStyle = cssVar('--sub'); ctx.font = '13px Helvetica, Arial, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     if ('letterSpacing' in ctx) ctx.letterSpacing = '4px';
-    ctx.fillText('TAP HERE OR ADD TO CHOOSE PHOTOS', cssW / 2, cssH / 2);
+    var msg = 'TAP HERE OR ADD TO CHOOSE PHOTOS';
+    if (ctx.measureText(msg).width > cssW - 40) {            /* too wide for the screen: two centred lines */
+      ctx.fillText('TAP HERE OR ADD', cssW / 2, cssH / 2 - 12);
+      ctx.fillText('TO CHOOSE PHOTOS', cssW / 2, cssH / 2 + 12);
+    } else ctx.fillText(msg, cssW / 2, cssH / 2);
     if ('letterSpacing' in ctx) ctx.letterSpacing = '0px';
   }
 }
