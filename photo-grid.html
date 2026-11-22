@@ -39,7 +39,7 @@
   .step { display: inline-flex; align-items: center; border: 1px solid var(--border); background: var(--btn); }
   .step button { width: 44px; height: 44px; background: none; border: 0; color: var(--text); font: 400 20px Georgia, serif; touch-action: manipulation; }
   .step i { min-width: 34px; text-align: center; font: 700 16px "Courier New", monospace; font-style: normal; }
-  #status { padding: 2px 18px 8px; font: 13px Georgia, serif; color: var(--sub); min-height: 26px; flex: none; }
+  #status { padding: 2px 18px 8px; font: 13px/17px Georgia, serif; color: var(--sub); height: 44px; overflow: hidden; flex: none; }
   #status.err { color: var(--err); }
   #stage { flex: 1; position: relative; overflow: hidden; min-height: 0; }
   #cv { position: absolute; left: 0; top: 0; width: 100%; height: 100%; touch-action: none; display: block; }
@@ -741,7 +741,7 @@ cv.addEventListener('pointercancel', function (e) {
 function tap(pr) {
   if (count() === 0) { $('file').click(); return; }
   var now = Date.now(), tid = pr.k >= 0 ? S.slots[pr.k] : null;
-  var dbl = tid !== null && S.lastTapId === tid && now - S.lastTapAt < 350;
+  var dbl = tid !== null && S.lastTapId === tid && now - S.lastTapAt < 500;
   var hadPop = S.popId !== null;
   S.lastTapAt = now; S.lastTapId = tid;
   if (dbl) {                                          /* double-tap: open the menu, selection as it was before the first tap */
