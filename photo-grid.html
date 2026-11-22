@@ -133,6 +133,8 @@
   <img id="expimg" alt="Exported grid">
   <div class="mono" id="expinfo"></div>
   <div class="row"><span class="lbl">NAME</span><input class="nm" id="expname" type="text" value="PhotoGrid" autocapitalize="off" autocomplete="off" spellcheck="false"></div>
+  <div class="row"><span class="lbl">NEXT NO.</span><input class="nm" id="expnum" type="text" inputmode="numeric" pattern="[0-9]*" value="1" autocomplete="off" style="max-width:120px"></div>
+  <div class="mono" id="expnext"></div>
   <div class="row"><button class="b pri" id="expShare" data-cmd="share">SHARE / SAVE</button><button class="b" data-cmd="download">DOWNLOAD</button><button class="b" data-cmd="expclose">CLOSE</button></div>
   <div class="mono">Tip: press and hold the picture, then choose Save to Photos.</div>
 </div></div>
@@ -792,12 +794,23 @@ function exitFull() {
 document.addEventListener('fullscreenchange', function () { if (S.full && !document.fullscreenElement) exitFull(); });
 
 /* ------------------------------------------------------------------ export */
+function nameBase() { return ($('expname').value || 'PhotoGrid').replace(/[^A-Za-z0-9._ -]/g, '').trim() || 'PhotoGrid'; }
+function storedNext(base) {
+  try { return (parseInt(localStorage.getItem('pg-count-' + base), 10) || 0) + 1; } catch (e) { return 1; }
+}
+function showNext() { $('expnext').textContent = 'Saves as: ' + fileName().name; }
+function syncNum() { $('expnum').value = String(storedNext(nameBase())); showNext(); }   /* NEXT NO. follows the saved count for this name */
 function fileName() {
-  var base = ($('expname').value || 'PhotoGrid').replace(/[^A-Za-z0-9._ -]/g, '').trim() || 'PhotoGrid', n = 1;
-  try { n = (parseInt(localStorage.getItem('pg-count-' + base), 10) || 0) + 1; } catch (e) { n = 1; }
+  var base = nameBase(), n = parseInt($('expnum').value, 10);
+  if (!(n >= 1 && n <= 9999)) n = storedNext(base);
   return { name: base + '_' + ('00' + n).slice(-3) + '.png', base: base, n: n };
 }
-function bumpCounter(f) { try { localStorage.setItem('pg-count-' + f.base, String(f.n)); } catch (e) { /* ignore */ } }
+function bumpCounter(f) {
+  try { localStorage.setItem('pg-count-' + f.base, String(f.n)); } catch (e) { /* ignore */ }
+  $('expnum').value = String(f.n + 1); showNext();
+}
+$('expname').addEventListener('input', syncNum);
+$('expnum').addEventListener('input', showNext);
 
 async function doExport() {
   if (S.busy) return;
@@ -835,7 +848,7 @@ async function doExport() {
     $('expimg').src = expUrl;
     $('expinfo').textContent = outW + ' x ' + outH + ' px, ' + (blob.size / 1048576).toFixed(1) + ' MB' + (sc < 1 ? ' (scaled to fit the iPhone/iPad limit)' : '');
     $('expShare').hidden = !(navigator.canShare && navigator.canShare({ files: [new File([blob], 'x.png', { type: 'image/png' })] }));
-    $('exp').hidden = false;
+    syncNum(); $('exp').hidden = false;
     status('Export ready.');
     window.__pgLast = { w: outW, h: outH, scale: sc, pad: pad * sc, dark: dark(), blob: blob };
   } catch (err) { status('Export failed: ' + (err && err.message ? err.message : err), true); }
@@ -844,7 +857,8 @@ async function doExport() {
 async function shareExport() {
   if (!expBlob) return;
   var f = fileName(), file = new File([expBlob], f.name, { type: 'image/png' });
-  try { await navigator.share({ files: [file] }); bumpCounter(f); status('Shared as ' + f.name + '.'); }
+  bumpCounter(f);                                   /* the number is used when SHARE / SAVE is pressed, whatever iOS reports back */
+  try { await navigator.share({ files: [file] }); status('Shared as ' + f.name + '.'); }
   catch (e) { if (!e || e.name !== 'AbortError') status('Sharing did not work - use DOWNLOAD or press and hold the picture.', true); }
 }
 function downloadExport() {
