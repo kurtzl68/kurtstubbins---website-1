@@ -134,8 +134,9 @@
   <div class="mono" id="expinfo"></div>
   <div class="row"><span class="lbl">NAME</span><input class="nm" id="expname" type="text" value="PhotoGrid" autocapitalize="off" autocomplete="off" spellcheck="false"></div>
   <div class="row"><span class="lbl">NEXT NO.</span><input class="nm" id="expnum" type="text" inputmode="numeric" pattern="[0-9]*" value="1" autocomplete="off" style="max-width:120px"></div>
+  <div class="row"><span class="lbl">FORMAT</span><button class="b on" id="fmtPng" data-cmd="fmt-png">PNG</button><button class="b" id="fmtJpg" data-cmd="fmt-jpg">JPEG</button></div>
   <div class="mono" id="expnext"></div>
-  <div class="row"><button class="b pri" id="expShare" data-cmd="share">SHARE / SAVE</button><button class="b" data-cmd="download">DOWNLOAD</button><button class="b" data-cmd="expclose">CLOSE</button></div>
+  <div class="row"><button class="b pri" id="expShare" data-cmd="share">SHARE / SAVE</button><button class="b" data-cmd="copy">COPY</button><button class="b" data-cmd="expclose">CLOSE</button></div>
   <div class="mono">Tip: press and hold the picture, then choose Save to Photos.</div>
 </div></div>
 
@@ -156,7 +157,7 @@ var S = {
   sel: new Set(), selMode: true, redo: [], showGrid: true, popId: null, full: false, busy: false,
   drag: null, press: null, lastTap: 0, lastTapAt: 0, lastTapId: null, lastToggled: false
 };
-var L = null, dpr = 1, cssW = 0, cssH = 0, dirty = false, clearTimer = 0, expBlob = null, expUrl = '';
+var L = null, dpr = 1, cssW = 0, cssH = 0, dirty = false, clearTimer = 0, expBlob = null, expUrl = '', expCanvas = null, expFmt = 'png', expDims = null;
 
 /* --------------------------------------------------------- pure layout logic */
 function median(a) {
@@ -807,7 +808,7 @@ function syncNum() { $('expnum').value = String(storedNext(nameBase())); showNex
 function fileName() {
   var base = nameBase(), n = parseInt($('expnum').value, 10);
   if (!(n >= 1 && n <= 9999)) n = storedNext(base);
-  return { name: base + '_' + ('00' + n).slice(-3) + '.png', base: base, n: n };
+  return { name: base + '_' + ('00' + n).slice(-3) + (expFmt === 'jpg' ? '.jpg' : '.png'), base: base, n: n };
 }
 function bumpCounter(f) {
   try { localStorage.setItem('pg-count-' + f.base, String(f.n)); } catch (e) { /* ignore */ }
@@ -843,33 +844,59 @@ async function doExport() {
       drawTileTo(oc, tc, info, r[0], r[1], r[2], r[3]);
       release(tc);
     }
-    status('Encoding PNG ...');
-    var blob = await new Promise(function (res) { out.toBlob(res, 'image/png'); });
-    release(out);
-    if (!blob) throw new Error('The browser could not make the PNG (too large for memory?).');
-    if (expUrl) URL.revokeObjectURL(expUrl);
-    expBlob = blob; expUrl = URL.createObjectURL(blob);
-    $('expimg').src = expUrl;
-    $('expinfo').textContent = outW + ' x ' + outH + ' px, ' + (blob.size / 1048576).toFixed(1) + ' MB' + (sc < 1 ? ' (scaled to fit the iPhone/iPad limit)' : '');
-    $('expShare').hidden = !(navigator.canShare && navigator.canShare({ files: [new File([blob], 'x.png', { type: 'image/png' })] }));
+    if (expCanvas) release(expCanvas);
+    expCanvas = out; expDims = { w: outW, h: outH, sc: sc };      /* kept until the sheet is closed so the format can be switched */
+    await encodeExport();
+    $('expShare').hidden = false;
     syncNum(); $('exp').hidden = false;
     status('Export ready.');
-    window.__pgLast = { w: outW, h: outH, scale: sc, pad: pad * sc, dark: dark(), blob: blob };
+    window.__pgLast = { w: outW, h: outH, scale: sc, pad: pad * sc, dark: dark(), blob: expBlob };
   } catch (err) { status('Export failed: ' + (err && err.message ? err.message : err), true); }
   S.busy = false;
 }
+function canvasBlob(type, q) { return new Promise(function (res) { expCanvas.toBlob(res, type, q); }); }
+async function encodeExport() {                      /* (re)make the file in the chosen format from the kept canvas */
+  status('Encoding ' + (expFmt === 'jpg' ? 'JPEG' : 'PNG') + ' ...');
+  var blob = await canvasBlob(expFmt === 'jpg' ? 'image/jpeg' : 'image/png', 0.92);
+  if (!blob) throw new Error('The browser could not make the file (too large for memory?).');
+  if (expUrl) URL.revokeObjectURL(expUrl);
+  expBlob = blob; expUrl = URL.createObjectURL(blob);
+  $('expimg').src = expUrl;
+  $('expinfo').textContent = expDims.w + ' x ' + expDims.h + ' px, ' + (blob.size / 1048576).toFixed(1) + ' MB ' + (expFmt === 'jpg' ? 'JPEG' : 'PNG') + (expDims.sc < 1 ? ' (scaled to fit the iPhone/iPad limit)' : '');
+  $('fmtPng').className = 'b' + (expFmt === 'png' ? ' on' : ''); $('fmtJpg').className = 'b' + (expFmt === 'jpg' ? ' on' : '');
+  showNext();
+}
+async function setFormat(fmt) {
+  if (fmt === expFmt || !expCanvas || S.busy) return;
+  expFmt = fmt; S.busy = true;
+  try { await encodeExport(); status('Format: ' + (fmt === 'jpg' ? 'JPEG' : 'PNG') + '.'); } catch (err) { status('Export failed: ' + (err && err.message ? err.message : err), true); }
+  S.busy = false;
+}
+function closeExport() {
+  $('exp').hidden = true;
+  if (expCanvas) { release(expCanvas); expCanvas = null; }
+  if (expUrl) { URL.revokeObjectURL(expUrl); expUrl = ''; } expBlob = null; $('expimg').removeAttribute('src');
+}
 async function shareExport() {
   if (!expBlob) return;
-  var f = fileName(), file = new File([expBlob], f.name, { type: 'image/png' });
+  var mime = expFmt === 'jpg' ? 'image/jpeg' : 'image/png';
+  var f = fileName(), file = new File([expBlob], f.name, { type: mime });
   bumpCounter(f);                                   /* the number is used when SHARE / SAVE is pressed, whatever iOS reports back */
+  if (!(navigator.canShare && navigator.canShare({ files: [file] }))) {   /* no share sheet in this browser: plain file save */
+    var a = document.createElement('a'); a.href = expUrl; a.download = f.name; document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    status('Saved as ' + f.name + '.'); return;
+  }
   try { await navigator.share({ files: [file] }); status('Shared as ' + f.name + '.'); }
-  catch (e) { if (!e || e.name !== 'AbortError') status('Sharing did not work - use DOWNLOAD or press and hold the picture.', true); }
+  catch (e) { if (!e || e.name !== 'AbortError') status('Sharing did not work - press and hold the picture and choose Save to Photos.', true); }
 }
-function downloadExport() {
-  if (!expBlob) return;
-  var f = fileName(), a = document.createElement('a');
-  a.href = expUrl; a.download = f.name; document.body.appendChild(a); a.click(); document.body.removeChild(a);
-  bumpCounter(f); status('Saved as ' + f.name + ' (check Downloads).');
+async function copyExport() {
+  if (!expCanvas) return;
+  if (!(window.ClipboardItem && navigator.clipboard && navigator.clipboard.write)) { status('Copy is not available in this browser.', true); return; }
+  try {                                              /* the clipboard takes PNG; the blob is passed as a promise to stay inside the tap */
+    var png = expFmt === 'png' && expBlob ? Promise.resolve(expBlob) : canvasBlob('image/png');
+    await navigator.clipboard.write([new ClipboardItem({ 'image/png': png })]);
+    status('Copied (as PNG). Paste it into another app.');
+  } catch (e) { status('Copy did not work - use SHARE / SAVE instead.', true); }
 }
 
 /* ------------------------------------------------------------------ wiring */
@@ -892,9 +919,11 @@ document.addEventListener('click', function (e) {
     else if (c === 'rows+') setSize(S.cols, S.rows + 1);
     else if (c === 'more') $('sheet').hidden = false;
     else if (c === 'closesheet') $('sheet').hidden = true;
-    else if (c === 'expclose') $('exp').hidden = true;
+    else if (c === 'expclose') closeExport();
     else if (c === 'share') shareExport();
-    else if (c === 'download') downloadExport();
+    else if (c === 'copy') copyExport();
+    else if (c === 'fmt-png') setFormat('png');
+    else if (c === 'fmt-jpg') setFormat('jpg');
     else if (c === 'clear') {
       if (b.getAttribute('data-armed')) { b.removeAttribute('data-armed'); b.textContent = 'CLEAR'; $('sheet').hidden = true; clearAll(); }
       else {
