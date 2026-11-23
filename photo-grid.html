@@ -1005,7 +1005,7 @@ function relayoutBurst() {   /* iOS home-screen apps can keep stale layout/hit a
     relayoutTimers.push(setTimeout(function () { try { window.scrollTo(0, 0); } catch (e) { /* ignore */ } resetTouches(); resize(); }, ms));
   });
 }
-function onRotated() { if (S.full) exitFull(); relayoutBurst(); }
+function onRotated() { relayoutBurst(); }
 window.addEventListener('orientationchange', onRotated);
 window.addEventListener('resize', function () {
   var ls = window.innerWidth > window.innerHeight;
