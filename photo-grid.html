@@ -63,6 +63,7 @@
   #expimg { max-width: 100%; max-height: 42vh; object-fit: contain; align-self: center; background: #888; -webkit-user-select: auto; user-select: auto; -webkit-touch-callout: default; }
   .row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
   .row > .b { flex: 1; }
+  #bgsw { width: 44px; height: 44px; padding: 0; border: 1px solid var(--border); background: var(--btn); border-radius: 0; flex: none; }
   .nm { flex: 1; min-height: 44px; background: var(--btn); color: var(--text); border: 1px solid var(--border); border-radius: 0; padding: 0 10px; font: 16px "Courier New", monospace; -webkit-user-select: text; user-select: text; }
   .mono { font: 12px "Courier New", monospace; color: var(--sub); }
   #fsx { position: fixed; top: calc(10px + env(safe-area-inset-top)); right: 10px; z-index: 30; opacity: .55; }
@@ -125,6 +126,8 @@
   <div class="row"><span class="lbl">COLUMNS</span><span class="step"><button data-cmd="cols-">-</button><i class="colsVal">2</i><button data-cmd="cols+">+</button></span></div>
   <div class="row"><span class="lbl">ROWS</span><span class="step"><button data-cmd="rows-">-</button><i class="rowsVal">2</i><button data-cmd="rows+">+</button></span></div>
   <div class="row"><button class="b" data-cmd="full">FULL SCREEN</button><button class="b" data-cmd="fit">FIT GRID</button><button class="b" data-cmd="grid" id="bGrid2">GRID: ON</button></div>
+  <div class="row"><span class="lbl">BACKGROUND</span><input type="color" id="bgsw" value="#000000" aria-label="Background color"><input class="nm" id="bghex" type="text" placeholder="THEME" maxlength="7" autocapitalize="off" autocomplete="off" spellcheck="false" style="max-width:110px"></div>
+  <div class="row"><button class="b" data-cmd="pick">PICK FROM PHOTO</button><button class="b" data-cmd="bgreset">RESET</button></div>
   <div class="row"><button class="b err" data-cmd="clear" id="bClear2">CLEAR</button><button class="b" data-cmd="closesheet">CLOSE</button></div>
   <div class="mono">Up to 6 x 6 on iPhone.</div>
 </div></div>
@@ -156,7 +159,8 @@ var cv = $('cv'), ctx = cv.getContext('2d');
 var S = {
   cols: 2, rows: 2, slots: [null, null, null, null], reg: {}, nextId: 1, undo: [],
   sel: new Set(), selMode: true, redo: [], showGrid: true, popId: null, full: false, busy: false,
-  drag: null, press: null, lastTap: 0, lastTapAt: 0, lastTapId: null, lastToggled: false
+  drag: null, press: null, lastTap: 0, lastTapAt: 0, lastTapId: null, lastToggled: false,
+  bgCustom: null, picking: false     /* custom background color (#rrggbb) - never saved, every launch starts on the theme */
 };
 var L = null, dpr = 1, cssW = 0, cssH = 0, dirty = false, clearTimer = 0, expBlob = null, expUrl = '', expCanvas = null, expFmt = 'png', expDims = null;
 
@@ -496,7 +500,7 @@ function computeView() {
 function render() {
   dirty = false;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  ctx.fillStyle = S.full ? '#000000' : cssVar('--bg');
+  ctx.fillStyle = S.full ? '#000000' : (S.bgCustom || cssVar('--bg'));
   ctx.fillRect(0, 0, cssW, cssH);
   L = computeView();
   var i, d = S.drag, moving = {};
@@ -652,6 +656,7 @@ function fingerGesture() {           /* 2-finger tap = undo, 3-finger tap = redo
   gest.max = 0; gest.moved = false;
 }
 cv.addEventListener('pointerdown', function (e) {
+  if (S.picking) { pickColor(e); return; }
   if (e.pointerType === 'touch') {
     var pt0 = pt(e);
     if (!touchCount()) { gest.max = 0; gest.moved = false; gest.t0 = Date.now(); }
@@ -794,6 +799,7 @@ function setTheme(t) {
   document.body.setAttribute('data-theme', t);
   var m = document.querySelector('meta[name="theme-color"]'); if (m) m.setAttribute('content', t === 'dark' ? '#1A1A1A' : '#E8E5DF');
   try { localStorage.setItem('pg-theme', t); } catch (e) { /* ignore */ }
+  if ($('bgsw')) syncBgUi();
   invalidate();
 }
 function syncUi() {
@@ -801,6 +807,38 @@ function syncUi() {
   Array.prototype.forEach.call(document.querySelectorAll('.rowsVal'), function (e) { e.textContent = S.rows; });
   ['bGrid', 'bGrid2'].forEach(function (k) { var g = $(k); if (g) g.textContent = S.showGrid ? 'GRID: ON' : 'GRID: OFF'; });
 }
+/* ------------------------------------------------------------- background */
+function normHex(t) {
+  var m = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(String(t || '').trim()); if (!m) return null;
+  var h = m[1].toLowerCase(); if (h.length === 3) h = h.charAt(0) + h.charAt(0) + h.charAt(1) + h.charAt(1) + h.charAt(2) + h.charAt(2);
+  return '#' + h;
+}
+function syncBgUi() {
+  $('bgsw').value = S.bgCustom || (dark() ? '#000000' : '#ffffff');
+  if (S.bgCustom) $('bghex').value = S.bgCustom.toUpperCase(); else $('bghex').value = '';
+}
+function setBg(hex, msg) { S.bgCustom = hex; syncBgUi(); invalidate(); status(msg || ('Background ' + hex.toUpperCase() + '.')); }
+function resetBg() { S.bgCustom = null; syncBgUi(); invalidate(); status('Background back to the ' + (dark() ? 'black' : 'white') + ' theme color.'); }
+function pickColor(e) {
+  S.picking = false;
+  var p = pt(e), k = hitTile(p);
+  if (k < 0) { status('Color picking cancelled.'); return; }
+  var x = Math.round(p.x * dpr), y = Math.round(p.y * dpr), r = 2;
+  x = Math.max(r, Math.min(cv.width - r - 1, x)); y = Math.max(r, Math.min(cv.height - r - 1, y));
+  try {
+    var d = ctx.getImageData(x - r, y - r, 2 * r + 1, 2 * r + 1).data, R = 0, G = 0, B = 0, n = d.length / 4;
+    for (var i = 0; i < d.length; i += 4) { R += d[i]; G += d[i + 1]; B += d[i + 2]; }
+    var h = function (v) { var s2 = Math.round(v / n).toString(16); return s2.length < 2 ? '0' + s2 : s2; };
+    setBg('#' + h(R) + h(G) + h(B), 'Background picked from the photo: #' + (h(R) + h(G) + h(B)).toUpperCase() + '.');
+  } catch (err) { status('Could not read that color.', true); }
+}
+$('bgsw').addEventListener('input', function () { var h = normHex($('bgsw').value); if (h) setBg(h); });
+$('bghex').addEventListener('input', function () { var t = $('bghex').value.trim().replace(/^#/, ''); if (t.length === 6) { var h = normHex(t); if (h) setBg(h); } });
+$('bghex').addEventListener('change', function () {
+  var t = $('bghex').value.trim(); if (t === '') { resetBg(); return; }
+  var h = normHex(t); if (h) setBg(h); else { status('Background must be a hex color such as #E8E5DF.', true); syncBgUi(); }
+});
+
 function toggleGrid() {
   S.showGrid = !S.showGrid; syncUi(); invalidate();
   try { localStorage.setItem('pg-grid', S.showGrid ? '1' : '0'); } catch (e) { /* ignore */ }
@@ -808,7 +846,7 @@ function toggleGrid() {
 }
 function enterFull() {
   if (!count()) { status('Add photos first.', true); return; }
-  closePop(); S.full = true; document.body.classList.add('full'); $('fsx').hidden = false; $('sheet').hidden = true;
+  closePop(); S.picking = false; S.full = true; document.body.classList.add('full'); $('fsx').hidden = false; $('sheet').hidden = true;
   var el = document.documentElement, rq = el.requestFullscreen || el.webkitRequestFullscreen;
   if (rq) { try { var pr = rq.call(el); if (pr && pr.catch) pr.catch(function () {}); } catch (e) { /* not supported on this device */ } }
   setTimeout(resize, 60);
@@ -855,7 +893,7 @@ async function doExport() {
     var aligns = S.slots.map(function (id) { return id === null ? null : [S.reg[id].ax, S.reg[id].ay]; });
     var lay = computeLayout(sizes, S.cols, S.rows, sc, pad * sc, pad * sc, aligns);
     var out = mk(outW, outH), oc = out.getContext('2d');
-    oc.fillStyle = dark() ? '#000000' : '#FFFFFF';                  /* matches the current scheme: pure black or pure white */
+    oc.fillStyle = S.bgCustom || (dark() ? '#000000' : '#FFFFFF');   /* custom color, else the current scheme: pure black or pure white */
     oc.fillRect(0, 0, outW, outH);
     var total = count(), done = 0;
     for (var i = 0; i < S.slots.length; i++) {
@@ -934,6 +972,8 @@ document.addEventListener('click', function (e) {
     else if (c === 'undo') undo();
     else if (c === 'redo') redo();
     else if (c === 'grid') toggleGrid();
+    else if (c === 'pick') { if (!count()) { status('Add photos first.', true); } else { S.picking = true; closePop(); $('sheet').hidden = true; status('Tap a photo to pick its color. Tap empty space to cancel.'); } }
+    else if (c === 'bgreset') resetBg();
     else if (c === 'full') enterFull();
     else if (c === 'exitfull') exitFull();
     else if (c === 'fit') { closePop(); fitGrid(); $('sheet').hidden = true; }
@@ -1018,7 +1058,7 @@ if (PHONE) $('app').appendChild($('pop'));       /* phone: the tile menu sits un
 try { S.showGrid = localStorage.getItem('pg-grid') !== '0'; syncUi(); } catch (e) { /* ignore */ }
 try { var th = localStorage.getItem('pg-theme'); if (th === 'light' || th === 'dark') setTheme(th); } catch (e) { /* ignore */ }
 syncUi(); resize();
-window.__pg = { S: S, view: function () { L = computeView(); return L; }, render: render, MAX_N: MAX_N };
+window.__pg = { normHex: normHex, S: S, view: function () { L = computeView(); return L; }, render: render, MAX_N: MAX_N };
 })();
 </script>
 </body>
