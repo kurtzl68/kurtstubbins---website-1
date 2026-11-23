@@ -391,9 +391,15 @@ function duplicate(id) {
   status('Duplicated into row ' + (Math.floor(j / S.cols) + 1) + ', column ' + (j % S.cols + 1) + '.');
   syncUi(); invalidate();
 }
+function removeIds(id) {                         /* REMOVE acts on every ticked tile when the menu's tile is one of them */
+  if (S.sel.has(id) && S.sel.size > 1) { var ids = []; S.sel.forEach(function (v) { if (slotOf(v) >= 0) ids.push(v); }); if (ids.length > 1) return ids; }
+  return [id];
+}
 function removeTile(id) {
-  pushUndo(); S.slots[slotOf(id)] = null; S.sel.delete(id); closePop(); prune();
-  status('Removed. Slot left open.'); invalidate();
+  var ids = removeIds(id);
+  pushUndo(); ids.forEach(function (v) { S.slots[slotOf(v)] = null; S.sel.delete(v); });
+  closePop(); prune();
+  status(ids.length > 1 ? 'Removed ' + ids.length + ' tiles. Slots left open.' : 'Removed. Slot left open.'); invalidate();
 }
 function setAlign(id, ax, ay) {
   pushUndo(); var v = S.reg[id]; v.ax = ax; v.ay = ay;
@@ -561,6 +567,8 @@ function openPop(id) {
 function closePop() { if (S.popId !== null) { S.popId = null; $('pop').hidden = true; invalidate(); } }
 function refreshPop() {
   if (S.popId === null) return;
+  var rmn = removeIds(S.popId).length, rb = document.querySelector('#pop [data-act=rm]');
+  if (rb) rb.textContent = rmn > 1 ? 'REMOVE ' + rmn : 'REMOVE';
   var a = effAlign(S.popId), btns = $('apad').children;
   for (var i = 0; i < btns.length; i++) {
     var on = +btns[i].getAttribute('data-ax') === a[0] && +btns[i].getAttribute('data-ay') === a[1];
