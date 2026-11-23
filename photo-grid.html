@@ -57,6 +57,7 @@
   body.phone #pop .ph { display: none; }
   #exp, #sheet { position: fixed; left: 0; right: 0; top: 0; bottom: 0; z-index: 20; background: rgba(0,0,0,.62); display: flex; align-items: center; justify-content: center; padding: 18px; }
   #sheet { align-items: flex-end; padding: 0; }
+  #sheet .lbl { width: 104px; margin-left: 4px; }
   .card { background: var(--card); border: 1px solid var(--border); padding: 16px; max-width: 560px; width: 100%; max-height: 100%; overflow: auto; display: flex; flex-direction: column; gap: 10px; }
   #sheet .card { border-width: 1px 0 0; max-width: none; padding-bottom: calc(22px + env(safe-area-inset-bottom)); }
   #expimg { max-width: 100%; max-height: 42vh; object-fit: contain; align-self: center; background: #888; -webkit-user-select: auto; user-select: auto; -webkit-touch-callout: default; }
@@ -121,8 +122,8 @@
 <button class="b" id="fsx" data-cmd="exitfull" hidden>EXIT</button>
 
 <div id="sheet" hidden><div class="card">
-  <div class="row"><span class="lbl">COLUMNS</span><span class="step"><button data-cmd="cols-">-</button><i class="colsVal">2</i><button data-cmd="cols+">+</button></span>
-  <span class="lbl">ROWS</span><span class="step"><button data-cmd="rows-">-</button><i class="rowsVal">2</i><button data-cmd="rows+">+</button></span></div>
+  <div class="row"><span class="lbl">COLUMNS</span><span class="step"><button data-cmd="cols-">-</button><i class="colsVal">2</i><button data-cmd="cols+">+</button></span></div>
+  <div class="row"><span class="lbl">ROWS</span><span class="step"><button data-cmd="rows-">-</button><i class="rowsVal">2</i><button data-cmd="rows+">+</button></span></div>
   <div class="row"><button class="b" data-cmd="full">FULL SCREEN</button><button class="b" data-cmd="fit">FIT GRID</button><button class="b" data-cmd="grid" id="bGrid2">GRID: ON</button></div>
   <div class="row"><button class="b err" data-cmd="clear" id="bClear2">CLEAR</button><button class="b" data-cmd="closesheet">CLOSE</button></div>
   <div class="mono">Up to 6 x 6 on iPhone.</div>
