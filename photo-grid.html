@@ -684,6 +684,11 @@ cv.addEventListener('pointermove', function (e) {
     var wc = p.x > re && S.cols < MAX_N && !(d.orig && S.cols > d.orig.cols), wr = p.y > be && S.rows < MAX_N && !(d.orig && S.rows > d.orig.rows);
     if (wc || wr) { if (dragGrow(d, wc, wr)) { p = pt(e); h = cellAt(p); } }
   }
+  if (h === null && d.orig) {                          /* grid was grown by this drag: the margin beside it counts as its nearest cell */
+    var x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;
+    L.cells.forEach(function (c) { x0 = Math.min(x0, c[0]); x1 = Math.max(x1, c[0] + c[2]); y0 = Math.min(y0, c[1]); y1 = Math.max(y1, c[1] + c[3]); });
+    h = cellAt({ x: Math.min(Math.max(p.x, x0 + 1), x1 - 1), y: Math.min(Math.max(p.y, y0 + 1), y1 - 1) });
+  }
   var changed = h !== d.hover; d.hover = h;
   if (changed) dragStatus(d);
   invalidate();
