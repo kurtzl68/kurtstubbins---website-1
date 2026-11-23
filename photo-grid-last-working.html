@@ -1,0 +1,988 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Photo Grid">
+<meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#1A1A1A">
+<title>PHOTO GRID</title>
+<style>
+  :root, body[data-theme="dark"] {
+    --bg:#1A1A1A; --card:#252525; --border:#3C3C3C; --text:#F4F1EB; --label:#B9B5AE; --sub:#CFCBC4;
+    --accbg:#F4F1EB; --accfg:#1A1A1A; --btn:#2E2E2E; --err:#E59A72; --ok:#7DBF8E;
+  }
+  body[data-theme="light"] {
+    --bg:#E8E5DF; --card:#FFFFFF; --border:#CFCBC3; --text:#1A1A1A; --label:#6F6B66; --sub:#5F5B56;
+    --accbg:#1A1A1A; --accfg:#FFFFFF; --btn:#FFFFFF; --err:#A0522D; --ok:#3F6B4C;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; background: var(--bg); color: var(--text); font-family: Georgia, serif; -webkit-text-size-adjust: 100%; }
+  body { position: fixed; top: 0; left: 0; right: 0; bottom: 0; width: 100%; overflow: hidden; overscroll-behavior: none;
+         padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+         -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+  body.full { background: #000; }
+  #app { height: 100%; display: flex; flex-direction: column; }
+  .top { display: flex; align-items: center; justify-content: space-between; padding: 10px 18px; border-bottom: 1px solid var(--border); flex: none; }
+  .title { font: 13px Helvetica, Arial, sans-serif; letter-spacing: .34em; color: var(--label); }
+  .bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 10px 18px 6px; flex: none; }
+  .lbl { font: 10px Helvetica, Arial, sans-serif; letter-spacing: .3em; color: var(--label); margin: 0 2px 0 4px; }
+  .b { min-height: 44px; padding: 0 13px; background: var(--btn); color: var(--text); border: 1px solid var(--border); border-radius: 0;
+       font: 700 11px Helvetica, Arial, sans-serif; letter-spacing: .2em; display: inline-flex; align-items: center; justify-content: center;
+       white-space: nowrap; cursor: pointer; -webkit-appearance: none; appearance: none; touch-action: manipulation; }
+  .b.pri { background: var(--accbg); color: var(--accfg); border-color: var(--accbg); }
+  .b.on { background: var(--accbg); color: var(--accfg); border-color: var(--accbg); }
+  .b.err { color: var(--err); }
+  .b[disabled] { opacity: .45; }
+  .b.sm { padding: 0 6px; font-size: 10px; letter-spacing: .1em; }
+  .step { display: inline-flex; align-items: center; border: 1px solid var(--border); background: var(--btn); }
+  .step button { width: 44px; height: 44px; background: none; border: 0; color: var(--text); font: 400 20px Georgia, serif; touch-action: manipulation; }
+  .step i { min-width: 34px; text-align: center; font: 700 16px "Courier New", monospace; font-style: normal; }
+  #status { padding: 2px 18px 8px; font: 13px/17px Georgia, serif; color: var(--sub); height: 44px; overflow: hidden; flex: none; }
+  #status.err { color: var(--err); }
+  #stage { flex: 1; position: relative; overflow: hidden; min-height: 0; }
+  #cv { position: absolute; left: 0; top: 0; width: 100%; height: 100%; touch-action: none; display: block; }
+  #pop { position: absolute; background: var(--card); border: 1px solid var(--border); padding: 12px; display: flex; gap: 14px; z-index: 5; }
+  [hidden] { display: none !important; }
+  .pcol { display: flex; flex-direction: column; gap: 6px; }
+  .ph { font: 10px Helvetica, Arial, sans-serif; letter-spacing: .3em; color: var(--label); margin-bottom: 2px; min-height: 12px; }
+  .apad { display: grid; grid-template-columns: repeat(3, 44px); grid-auto-rows: 44px; gap: 4px; }
+  .apad button { border: 1px solid var(--border); background: var(--btn); display: flex; align-items: center; justify-content: center; touch-action: manipulation; }
+  .apad button:after { content: ""; width: 6px; height: 6px; border: 1px solid var(--label); }
+  .apad button.cur { background: var(--accbg); }
+  .apad button.cur:after { width: 10px; height: 10px; background: var(--accfg); border: 0; }
+  body.phone #pop { position: static; flex: none; display: grid; grid-template-columns: 1fr 1fr; gap: 8px 10px; border-width: 1px 0 0; padding: 10px 14px calc(14px + env(safe-area-inset-bottom)); }
+  body.phone #pop .b { min-height: 40px; }
+  body.phone #pop .ph { display: none; }
+  #exp, #sheet { position: fixed; left: 0; right: 0; top: 0; bottom: 0; z-index: 20; background: rgba(0,0,0,.62); display: flex; align-items: center; justify-content: center; padding: 18px; }
+  #sheet { align-items: flex-end; padding: 0; }
+  #sheet .lbl { width: 104px; margin-left: 4px; }
+  .card { background: var(--card); border: 1px solid var(--border); padding: 16px; max-width: 560px; width: 100%; max-height: 100%; overflow: auto; display: flex; flex-direction: column; gap: 10px; }
+  #sheet .card { border-width: 1px 0 0; max-width: none; padding-bottom: calc(22px + env(safe-area-inset-bottom)); }
+  #expimg { max-width: 100%; max-height: 42vh; object-fit: contain; align-self: center; background: #888; -webkit-user-select: auto; user-select: auto; -webkit-touch-callout: default; }
+  .row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+  .row > .b { flex: 1; }
+  .nm { flex: 1; min-height: 44px; background: var(--btn); color: var(--text); border: 1px solid var(--border); border-radius: 0; padding: 0 10px; font: 16px "Courier New", monospace; -webkit-user-select: text; user-select: text; }
+  .mono { font: 12px "Courier New", monospace; color: var(--sub); }
+  #fsx { position: fixed; top: calc(10px + env(safe-area-inset-top)); right: 10px; z-index: 30; opacity: .55; }
+  body.full .top, body.full .bar, body.full #status { display: none; }
+  body.phone .pad-only { display: none !important; }
+  body:not(.phone) .pho { display: none !important; }
+  body.phone .lg { display: none; }
+  body.phone .top { padding: 8px 14px; }
+  body.phone .bar { padding: 8px 14px 4px; gap: 5px; }
+  body.phone .bar .b { padding: 0 9px; letter-spacing: .12em; }
+  body.phone #status { padding: 2px 14px 6px; }
+</style>
+</head>
+<body data-theme="dark">
+<div id="app">
+  <div class="top"><div class="title">PHOTO GRID</div><button class="b" data-cmd="theme">THEME</button></div>
+  <div class="bar" id="bar">
+    <span class="pad-only lbl">COLUMNS</span>
+    <span class="pad-only step"><button data-cmd="cols-">-</button><i class="colsVal">2</i><button data-cmd="cols+">+</button></span>
+    <span class="pad-only lbl">ROWS</span>
+    <span class="pad-only step"><button data-cmd="rows-">-</button><i class="rowsVal">2</i><button data-cmd="rows+">+</button></span>
+    <button class="b" data-cmd="add">ADD</button>
+    <button class="b pad-only" data-cmd="full">FULL SCREEN</button>
+    <button class="b pad-only" data-cmd="fit">FIT GRID</button>
+    <button class="b" data-cmd="undo" id="bUndo">UNDO</button>
+    <button class="b" data-cmd="redo" id="bRedo">REDO</button>
+    <button class="b pad-only" data-cmd="grid" id="bGrid">GRID: ON</button>
+    <button class="b pri" data-cmd="export">EXPORT<span class="lg">&nbsp;PNG</span></button>
+    <button class="b pad-only" data-cmd="clear" id="bClear">CLEAR</button>
+    <button class="b pho" data-cmd="more">MORE</button>
+  </div>
+  <div id="status">Tap ADD to choose photos.</div>
+  <div id="stage">
+    <canvas id="cv"></canvas>
+    <div id="pop" hidden>
+      <div class="pcol acts"><div class="ph">TILE</div>
+        <button class="b" data-act="rl">ROTATE LEFT</button>
+        <button class="b" data-act="rr">ROTATE RIGHT</button>
+        <button class="b" data-act="r180">ROTATE 180</button>
+      </div>
+      <div class="pcol acts2"><div class="ph">&nbsp;</div>
+        <button class="b" data-act="mh">MIRROR L-R</button>
+        <button class="b" data-act="mv">MIRROR T-B</button>
+        <button class="b" data-act="dup">DUPLICATE</button>
+      </div>
+      <div class="pcol"><div class="ph">ALIGN IN CELL</div>
+        <div class="apad" id="apad"></div>
+      </div>
+      <div class="pcol"><div class="ph">&nbsp;</div>
+        <button class="b err" data-act="rm">REMOVE</button>
+        <button class="b" data-act="auto">AUTO</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<button class="b" id="fsx" data-cmd="exitfull" hidden>EXIT</button>
+
+<div id="sheet" hidden><div class="card">
+  <div class="row"><span class="lbl">COLUMNS</span><span class="step"><button data-cmd="cols-">-</button><i class="colsVal">2</i><button data-cmd="cols+">+</button></span></div>
+  <div class="row"><span class="lbl">ROWS</span><span class="step"><button data-cmd="rows-">-</button><i class="rowsVal">2</i><button data-cmd="rows+">+</button></span></div>
+  <div class="row"><button class="b" data-cmd="full">FULL SCREEN</button><button class="b" data-cmd="fit">FIT GRID</button><button class="b" data-cmd="grid" id="bGrid2">GRID: ON</button></div>
+  <div class="row"><button class="b err" data-cmd="clear" id="bClear2">CLEAR</button><button class="b" data-cmd="closesheet">CLOSE</button></div>
+  <div class="mono">Up to 6 x 6 on iPhone.</div>
+</div></div>
+
+<div id="exp" hidden><div class="card">
+  <div class="title" style="margin-bottom:2px">EXPORT</div>
+  <img id="expimg" alt="Exported grid">
+  <div class="mono" id="expinfo"></div>
+  <div class="row"><span class="lbl">NAME</span><input class="nm" id="expname" type="text" value="PhotoGrid" autocapitalize="off" autocomplete="off" spellcheck="false"></div>
+  <div class="row"><span class="lbl">NEXT NO.</span><input class="nm" id="expnum" type="text" inputmode="numeric" pattern="[0-9]*" value="1" autocomplete="off" style="max-width:120px"></div>
+  <div class="row"><span class="lbl">FORMAT</span><button class="b on" id="fmtPng" data-cmd="fmt-png">PNG</button><button class="b" id="fmtJpg" data-cmd="fmt-jpg">JPEG</button></div>
+  <div class="mono" id="expnext"></div>
+  <div class="row"><button class="b pri" id="expShare" data-cmd="share">SHARE / SAVE</button><button class="b" data-cmd="copy">COPY</button><button class="b" data-cmd="expclose">CLOSE</button></div>
+  <div class="mono">Tip: press and hold the picture, then choose Save to Photos.</div>
+</div></div>
+
+<input type="file" id="file" accept="image/*" multiple hidden>
+
+<script>
+(function () {
+'use strict';
+/* ------------------------------------------------------------------ setup */
+var PHONE = Math.min(screen.width, screen.height) < 600;
+var MIN_N = 2, MAX_N = PHONE ? 6 : 12, UNDO_LIMIT = 40, EXPORT_PX = 16000000;   /* iOS Safari canvas limit is 16,777,216 px */
+var $ = function (id) { return document.getElementById(id); };
+if (PHONE) document.body.classList.add('phone');
+var cv = $('cv'), ctx = cv.getContext('2d');
+
+var S = {
+  cols: 2, rows: 2, slots: [null, null, null, null], reg: {}, nextId: 1, undo: [],
+  sel: new Set(), selMode: true, redo: [], showGrid: true, popId: null, full: false, busy: false,
+  drag: null, press: null, lastTap: 0, lastTapAt: 0, lastTapId: null, lastToggled: false
+};
+var L = null, dpr = 1, cssW = 0, cssH = 0, dirty = false, clearTimer = 0, expBlob = null, expUrl = '', expCanvas = null, expFmt = 'png', expDims = null;
+
+/* --------------------------------------------------------- pure layout logic */
+function median(a) {
+  var s = a.slice().sort(function (x, y) { return x - y; }), n = s.length;
+  return n % 2 ? s[(n - 1) / 2] : (s[n / 2 - 1] + s[n / 2]) / 2;
+}
+function sum(a) { var t = 0; for (var i = 0; i < a.length; i++) t += a[i]; return t; }
+
+/* A column is as wide as its widest image, a row as tall as its tallest. Empty
+   columns and rows keep the median image size so their space stays open. */
+function gridMetrics(sizes, cols, rows) {
+  var pw = 1000, ph = 1000, i, present = [];
+  for (i = 0; i < sizes.length; i++) if (sizes[i]) present.push(sizes[i]);
+  if (present.length) {
+    pw = median(present.map(function (s) { return s[0]; }));
+    ph = median(present.map(function (s) { return s[1]; }));
+  }
+  var cw = [], rh = [];
+  for (i = 0; i < cols; i++) cw.push(0);
+  for (i = 0; i < rows; i++) rh.push(0);
+  for (i = 0; i < sizes.length; i++) {
+    var sz = sizes[i]; if (!sz) continue;
+    var r = Math.floor(i / cols), c = i % cols;
+    if (sz[0] > cw[c]) cw[c] = sz[0];
+    if (sz[1] > rh[r]) rh[r] = sz[1];
+  }
+  return { colW: cw.map(function (w) { return w > 0 ? w : pw; }), rowH: rh.map(function (h) { return h > 0 ? h : ph; }) };
+}
+
+/* Cells and image rectangles. Every image keeps its own proportions; all share
+   one scale. Each image is anchored toward the centre of the grid unless it has
+   its own alignment (ax: -1 left, 0 centre, 1 right; ay: -1 top, 0 middle, 1 bottom). */
+function computeLayout(sizes, cols, rows, scale, ox, oy, aligns) {
+  var gm = gridMetrics(sizes, cols, rows), xs = [ox], ys = [oy], i;
+  for (i = 0; i < gm.colW.length; i++) xs.push(xs[i] + gm.colW[i] * scale);
+  for (i = 0; i < gm.rowH.length; i++) ys.push(ys[i] + gm.rowH[i] * scale);
+  var cmid = (cols - 1) / 2, rmid = (rows - 1) / 2, cells = [], rects = [];
+  for (i = 0; i < sizes.length; i++) {
+    var s = sizes[i], r = Math.floor(i / cols), c = i % cols;
+    var cx = xs[c], cy = ys[r], cw = xs[c + 1] - xs[c], ch = ys[r + 1] - ys[r];
+    cells.push([cx, cy, cw, ch]);
+    if (!s) { rects.push(null); continue; }
+    var dw = Math.max(1, Math.round(s[0] * scale)), dh = Math.max(1, Math.round(s[1] * scale));
+    var al = aligns ? aligns[i] : null, ax = al ? al[0] : null, ay = al ? al[1] : null, x, y;
+    if (ax == null) x = c < cmid ? cx + cw - dw : (c > cmid ? cx : cx + (cw - dw) / 2);
+    else x = ax < 0 ? cx : (ax > 0 ? cx + cw - dw : cx + (cw - dw) / 2);
+    if (ay == null) y = r < rmid ? cy + ch - dh : (r > rmid ? cy : cy + (ch - dh) / 2);
+    else y = ay < 0 ? cy : (ay > 0 ? cy + ch - dh : cy + (ch - dh) / 2);
+    rects.push([Math.round(x), Math.round(y), dw, dh]);
+  }
+  return { cells: cells, rects: rects };
+}
+
+function reshapeSlots(slots, cols, rows, ncols, nrows) {
+  var n = [], over = [], i;
+  for (i = 0; i < ncols * nrows; i++) n.push(null);
+  for (i = 0; i < slots.length; i++) {
+    if (slots[i] === null) continue;
+    var r = Math.floor(i / cols), c = i % cols;
+    if (r < nrows && c < ncols) n[r * ncols + c] = slots[i]; else over.push(slots[i]);
+  }
+  for (i = 0; i < over.length; i++) {
+    var j = n.indexOf(null);
+    if (j < 0) return null;
+    n[j] = over[i];
+  }
+  return n;
+}
+
+/* Drop image id on slot tgt. Empty target: it stays. Occupied: only that row
+   moves, toward the nearest empty slot (a tie goes right); a full row gets a new
+   column. Returns null if the row is full at the maximum width. */
+function planDrop(slots, cols, rows, src, tgt, id) {
+  var s = slots.slice();
+  if (src !== null) s[src] = null;
+  if (s[tgt] === null) { s[tgt] = id; return { slots: s, cols: cols, dir: null }; }
+  var r = Math.floor(tgt / cols), tc = tgt % cols, empties = [], c, i;
+  for (c = 0; c < cols; c++) if (s[r * cols + c] === null) empties.push(c);
+  if (!empties.length) {
+    if (cols >= MAX_N) return null;
+    s = reshapeSlots(s, cols, rows, cols + 1, rows); cols += 1;
+    for (c = 0; c < cols; c++) if (s[r * cols + c] === null) empties.push(c);
+  }
+  var base = r * cols, e = empties[0], best = null;
+  empties.forEach(function (cc) {
+    var key = [Math.abs(cc - tc), cc > tc ? 0 : 1];
+    if (!best || key[0] < best[0] || (key[0] === best[0] && key[1] < best[1])) { best = key; e = cc; }
+  });
+  var dir;
+  if (e > tc) { for (i = e; i > tc; i--) s[base + i] = s[base + i - 1]; dir = 'right'; }
+  else { for (i = e; i < tc; i++) s[base + i] = s[base + i + 1]; dir = 'left'; }
+  s[base + tc] = id;
+  return { slots: s, cols: cols, dir: dir };
+}
+
+/* Move the picked slots by dr rows and dc columns as one block. The grid grows
+   (up to the maximum) if the block needs it. Refused if a tile would land on a
+   tile that is not picked, or leave the grid at the top or left. */
+function planGroupMove(slots, cols, rows, picked, dr, dc) {
+  var moves = [], i;
+  picked.slice().sort(function (a, b) { return a - b; }).forEach(function (k) {
+    moves.push([Math.floor(k / cols) + dr, (k % cols) + dc, slots[k], k]);
+  });
+  var minr = 1e9, minc = 1e9, maxr = -1, maxc = -1;
+  moves.forEach(function (m) { minr = Math.min(minr, m[0]); minc = Math.min(minc, m[1]); maxr = Math.max(maxr, m[0]); maxc = Math.max(maxc, m[1]); });
+  if (minr < 0 || minc < 0) return { err: 'Refused - the group would go off the top or left edge.' };
+  var ncols = Math.max(cols, maxc + 1), nrows = Math.max(rows, maxr + 1);
+  if (ncols > MAX_N || nrows > MAX_N) return { err: 'Refused - the group would not fit in ' + MAX_N + ' x ' + MAX_N + '.' };
+  var s = reshapeSlots(slots, cols, rows, ncols, nrows);
+  moves.forEach(function (m) { s[Math.floor(m[3] / cols) * ncols + (m[3] % cols)] = null; });
+  for (i = 0; i < moves.length; i++) if (s[moves[i][0] * ncols + moves[i][1]] !== null) return { err: 'Refused - the group would land on a tile that is not selected.' };
+  moves.forEach(function (m) { s[m[0] * ncols + m[1]] = m[2]; });
+  return { slots: s, cols: ncols, rows: nrows };
+}
+
+/* ----------------------------------------------------------------- helpers */
+function count() { var n = 0; S.slots.forEach(function (v) { if (v !== null) n++; }); return n; }
+function effSize(info) { return info.rot % 180 ? [info.h, info.w] : [info.w, info.h]; }
+function status(t, err) { var el = $('status'); el.textContent = t; el.className = err ? 'err' : ''; }
+var cssCache = {};
+function cssVar(n) {
+  var k = document.body.getAttribute('data-theme') + n;
+  if (!cssCache[k]) cssCache[k] = getComputedStyle(document.body).getPropertyValue(n).trim();
+  return cssCache[k];
+}
+function dark() { return document.body.getAttribute('data-theme') === 'dark'; }
+function mk(w, h) { var c = document.createElement('canvas'); c.width = Math.max(1, w); c.height = Math.max(1, h); return c; }
+function release(c) { c.width = 1; c.height = 1; }
+
+/* Draw one tile: rotate first, then mirror the result, so MIRROR always flips
+   what you see regardless of rotation. */
+function drawTileTo(c, src, info, x, y, w, h) {
+  c.save();
+  c.translate(x + w / 2, y + h / 2);
+  c.scale(info.mx ? -1 : 1, info.my ? -1 : 1);
+  c.rotate(info.rot * Math.PI / 180);
+  var odd = info.rot % 180 !== 0, dw = odd ? h : w, dh = odd ? w : h;
+  c.drawImage(src, -dw / 2, -dh / 2, dw, dh);
+  c.restore();
+}
+
+/* Halve repeatedly before the final draw: much cleaner than one big jump. */
+function scaledCanvas(img, sw, sh, tw, th) {
+  var cur = img, cw = sw, ch = sh;
+  while (cw / 2 >= tw && ch / 2 >= th) {
+    var nw = Math.floor(cw / 2), nh = Math.floor(ch / 2), t = mk(nw, nh), tc = t.getContext('2d');
+    tc.imageSmoothingQuality = 'high';
+    tc.drawImage(cur, 0, 0, cw, ch, 0, 0, nw, nh);
+    if (cur !== img) release(cur);
+    cur = t; cw = nw; ch = nh;
+  }
+  var out = mk(tw, th), oc = out.getContext('2d');
+  oc.imageSmoothingQuality = 'high';
+  oc.drawImage(cur, 0, 0, cw, ch, 0, 0, tw, th);
+  if (cur !== img) release(cur);
+  return out;
+}
+
+function loadImg(file) {
+  return new Promise(function (res, rej) {
+    var u = URL.createObjectURL(file), im = new Image();
+    im.onload = function () { res({ im: im, url: u }); };
+    im.onerror = function () { URL.revokeObjectURL(u); rej(new Error('Cannot read ' + file.name)); };
+    im.src = u;
+  });
+}
+
+/* ------------------------------------------------------------------- undo */
+function snapshot() {
+  var xf = {};
+  Object.keys(S.reg).forEach(function (k) { var v = S.reg[k]; xf[k] = [v.rot, v.mx, v.my, v.ax, v.ay]; });
+  return { cols: S.cols, rows: S.rows, slots: S.slots.slice(), xf: xf };
+}
+function pushUndo() { S.undo.push(snapshot()); if (S.undo.length > UNDO_LIMIT) S.undo.shift(); S.redo = []; }
+function prune() {
+  var keep = {};
+  S.slots.forEach(function (v) { if (v !== null) keep[v] = 1; });
+  S.undo.concat(S.redo).forEach(function (u) { u.slots.forEach(function (v) { if (v !== null) keep[v] = 1; }); });
+  Object.keys(S.reg).forEach(function (k) { if (!keep[k]) delete S.reg[k]; });
+}
+function restoreSnap(u) {
+  S.cols = u.cols; S.rows = u.rows; S.slots = u.slots.slice();
+  Object.keys(u.xf).forEach(function (k) {
+    var v = S.reg[k]; if (!v) return;
+    v.rot = u.xf[k][0]; v.mx = u.xf[k][1]; v.my = u.xf[k][2]; v.ax = u.xf[k][3]; v.ay = u.xf[k][4];
+  });
+  S.sel.forEach(function (id) { if (S.slots.indexOf(id) < 0) S.sel.delete(id); });
+  if (S.slots.indexOf(S.popId) < 0) S.popId = null;
+  prune(); syncUi(); if (S.popId !== null) { L = computeView(); refreshPop(); } invalidate();
+}
+function undo() {
+  if (S.busy || !S.undo.length) { status('Nothing to undo.'); return; }
+  S.redo.push(snapshot()); if (S.redo.length > UNDO_LIMIT) S.redo.shift();
+  restoreSnap(S.undo.pop()); status('Undone.');
+}
+function redo() {
+  if (S.busy || !S.redo.length) { status('Nothing to redo.'); return; }
+  S.undo.push(snapshot()); if (S.undo.length > UNDO_LIMIT) S.undo.shift();
+  restoreSnap(S.redo.pop()); status('Redone.');
+}
+
+/* ---------------------------------------------------------------- editing */
+function growToFit(extra) {
+  var need = count() + extra, c = S.cols, r = S.rows;
+  while (c * r < need) {
+    if (c <= r && c < MAX_N) c++; else if (r < MAX_N) r++; else c++;
+  }
+  if (c !== S.cols || r !== S.rows) { S.slots = reshapeSlots(S.slots, S.cols, S.rows, c, r); S.cols = c; S.rows = r; }
+}
+function slotOf(id) { return S.slots.indexOf(id); }
+function rotate(id, steps) {
+  pushUndo(); var v = S.reg[id]; v.rot = (v.rot + 90 * steps + 360) % 360;
+  status('Rotated (now ' + v.rot + ' degrees).'); invalidate();
+}
+function mirror(id, axis) {
+  pushUndo(); var v = S.reg[id];
+  if (axis === 'h') v.mx = !v.mx; else v.my = !v.my;
+  status(axis === 'h' ? 'Mirrored left-right.' : 'Mirrored top-bottom.'); invalidate();
+}
+function duplicate(id) {
+  if (count() >= MAX_N * MAX_N) { status('The grid is full (' + MAX_N + ' x ' + MAX_N + ').', true); return; }
+  pushUndo();
+  var k = slotOf(id), r = Math.floor(k / S.cols), c = k % S.cols;
+  growToFit(1); k = r * S.cols + c;
+  var n = S.slots.length, j = -1, i;
+  for (i = k + 1; i < n + k + 1; i++) { if (S.slots[i % n] === null) { j = i % n; break; } }
+  var nid = S.nextId++, src = S.reg[id], cp = {};
+  Object.keys(src).forEach(function (key) { cp[key] = src[key]; });   /* shares the picture and file */
+  S.reg[nid] = cp; S.slots[j] = nid;
+  status('Duplicated into row ' + (Math.floor(j / S.cols) + 1) + ', column ' + (j % S.cols + 1) + '.');
+  syncUi(); invalidate();
+}
+function removeTile(id) {
+  pushUndo(); S.slots[slotOf(id)] = null; S.sel.delete(id); closePop(); prune();
+  status('Removed. Slot left open.'); invalidate();
+}
+function setAlign(id, ax, ay) {
+  pushUndo(); var v = S.reg[id]; v.ax = ax; v.ay = ay;
+  status(ax === null ? 'Alignment: toward the centre.' : 'Aligned.'); invalidate();
+}
+function setSize(c, r) {
+  c = Math.max(MIN_N, Math.min(MAX_N, c)); r = Math.max(MIN_N, Math.min(MAX_N, r));
+  if (c === S.cols && r === S.rows) return;
+  var n = reshapeSlots(S.slots, S.cols, S.rows, c, r);
+  if (!n) { status('Not enough room - remove some photos first.', true); return; }
+  pushUndo(); S.slots = n; S.cols = c; S.rows = r; closePop(); syncUi(); invalidate();
+  status('Grid is now ' + c + ' columns x ' + r + ' rows.');
+}
+function fitGrid() {
+  var n = count(), c = Math.max(MIN_N, Math.ceil(Math.sqrt(n))), r = Math.max(MIN_N, Math.ceil(n / c));
+  if (c > MAX_N) c = MAX_N; if (r > MAX_N) r = MAX_N;
+  setSize(c, r);
+  if (S.cols === c && S.rows === r) status('Grid fitted to ' + n + ' photos (' + c + ' x ' + r + ').');
+}
+function clearAll() {
+  pushUndo(); S.cols = 2; S.rows = 2; S.slots = [null, null, null, null]; S.sel.clear(); closePop();
+  prune(); syncUi(); invalidate(); status('Cleared. Tap ADD to choose photos.');
+}
+
+/* ----------------------------------------------------------------- adding */
+function proxyMax(total) { return total <= 16 ? 1024 : (total <= 48 ? 720 : 480); }
+async function makeProxy(file, total) {
+  var r = await loadImg(file), w = r.im.naturalWidth, h = r.im.naturalHeight;
+  if (!w || !h) { URL.revokeObjectURL(r.url); throw new Error('Empty image'); }
+  var s = Math.min(1, proxyMax(total) / Math.max(w, h)), pw = Math.max(1, Math.round(w * s)), ph = Math.max(1, Math.round(h * s));
+  var c = scaledCanvas(r.im, w, h, pw, ph);
+  URL.revokeObjectURL(r.url);
+  var bmp = c;
+  if (window.createImageBitmap) { try { bmp = await createImageBitmap(c); release(c); } catch (e) { bmp = c; } }
+  return { bmp: bmp, w: w, h: h };
+}
+async function addFiles(list) {
+  if (S.busy) return;
+  var files = Array.prototype.filter.call(list, function (f) {
+    return /^image\//.test(f.type) || /\.(jpe?g|png|webp|gif|bmp|heic|heif)$/i.test(f.name);
+  });
+  if (!files.length) { status('No images found.', true); return; }
+  var room = MAX_N * MAX_N - count();
+  if (room <= 0) { status('The grid is full (' + MAX_N + ' x ' + MAX_N + ').', true); return; }
+  var skipped = Math.max(0, files.length - room);
+  files = files.slice(0, room);
+  S.busy = true; pushUndo(); closePop();
+  var added = 0, failed = 0, total = count() + files.length;
+  for (var i = 0; i < files.length; i++) {
+    status('Loading ' + (i + 1) + ' / ' + files.length + ' ...');
+    try {
+      var p = await makeProxy(files[i], total);
+      var id = S.nextId++;
+      S.reg[id] = { name: files[i].name, file: files[i], bmp: p.bmp, w: p.w, h: p.h, rot: 0, mx: false, my: false, ax: null, ay: null };
+      var idx = S.slots.indexOf(null);
+      if (idx < 0) { growToFit(1); idx = S.slots.indexOf(null); }
+      S.slots[idx] = id; added++; syncUi(); invalidate();
+    } catch (err) { failed++; }
+    await new Promise(function (r) { setTimeout(r, 0); });
+  }
+  S.busy = false;
+  if (!added) S.undo.pop();
+  var msg = added + (added === 1 ? ' photo' : ' photos') + ' added.';
+  if (failed) msg += ' ' + failed + ' could not be read.';
+  if (skipped) msg += ' ' + skipped + ' skipped - grid is full.';
+  status(msg, failed || skipped);
+  syncUi(); invalidate();
+}
+
+/* ------------------------------------------------------------- rendering */
+function resize() {
+  var st = $('stage'), r = st.getBoundingClientRect();
+  dpr = Math.min(window.devicePixelRatio || 1, 2);
+  cssW = Math.max(1, Math.round(r.width)); cssH = Math.max(1, Math.round(r.height));
+  cv.width = Math.round(cssW * dpr); cv.height = Math.round(cssH * dpr);
+  L = computeView(); positionPop(); invalidate();
+}
+function invalidate() { if (!dirty) { dirty = true; requestAnimationFrame(render); } }
+
+function computeView() {
+  var sizes = S.slots.map(function (id) { return id === null ? null : effSize(S.reg[id]); });
+  var gm = gridMetrics(sizes, S.cols, S.rows), tw = sum(gm.colW), th = sum(gm.rowH);
+  var pad = (tw / S.cols) / 2;                        /* half the average column width, all four sides */
+  var scale = Math.min(cssW / (tw + 2 * pad), cssH / (th + 2 * pad));
+  var ox = (cssW - tw * scale) / 2, oy = (cssH - th * scale) / 2;
+  var aligns = S.slots.map(function (id) { return id === null ? null : [S.reg[id].ax, S.reg[id].ay]; });
+  var lay = computeLayout(sizes, S.cols, S.rows, scale, ox, oy, aligns);
+  lay.scale = scale; lay.pad = pad * scale; lay.sizes = sizes; lay.tw = tw; lay.th = th; lay.padNative = pad;
+  return lay;
+}
+
+function render() {
+  dirty = false;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.fillStyle = S.full ? '#000000' : cssVar('--bg');
+  ctx.fillRect(0, 0, cssW, cssH);
+  L = computeView();
+  var i, d = S.drag, moving = {};
+  if (d && d.ids) d.ids.forEach(function (id) { moving[id] = 1; });
+  if (!S.full) {                                       /* outlines for empty slots (GRID toggle; new row/column always while dragging) */
+    ctx.save(); ctx.strokeStyle = cssVar('--label'); ctx.globalAlpha = .5; ctx.setLineDash([4, 4]); ctx.lineWidth = 1;
+    for (i = 0; i < S.slots.length; i++) if (S.slots[i] === null) {
+      var isNew = d && d.orig && (i % S.cols >= d.orig.cols || Math.floor(i / S.cols) >= d.orig.rows);
+      if (!S.showGrid && !isNew) continue;
+      var c = L.cells[i]; ctx.strokeRect(c[0] + 3.5, c[1] + 3.5, c[2] - 7, c[3] - 7);
+    }
+    ctx.restore();
+  }
+  for (i = 0; i < S.slots.length; i++) {
+    var id = S.slots[i]; if (id === null || moving[id]) continue;
+    var r = L.rects[i]; drawTileTo(ctx, S.reg[id].bmp, S.reg[id], r[0], r[1], r[2], r[3]);
+  }
+  if (!S.full) {
+    ctx.save(); ctx.strokeStyle = cssVar('--text'); ctx.lineWidth = 3;
+    ctx.setLineDash([7, 4]);
+    for (i = 0; i < S.slots.length; i++) if (S.slots[i] !== null && S.sel.has(S.slots[i]) && !moving[S.slots[i]]) { var q = L.rects[i]; ctx.strokeRect(q[0] + 1.5, q[1] + 1.5, q[2] - 3, q[3] - 3); }
+    if (S.popId !== null && !moving[S.popId]) {
+      var k = slotOf(S.popId); if (k >= 0) { var p = L.rects[k]; ctx.strokeRect(p[0] + 1.5, p[1] + 1.5, p[2] - 3, p[3] - 3); }
+    }
+    ctx.restore();
+  }
+  if (d && d.mode !== 'box') {
+    if (d.hover !== null && d.hover !== undefined && d.hover !== d.src) {
+      var hc = L.cells[d.hover]; ctx.save(); ctx.strokeStyle = cssVar('--text'); ctx.lineWidth = 3; ctx.strokeRect(hc[0] + 2, hc[1] + 2, hc[2] - 4, hc[3] - 4); ctx.restore();
+    }
+    d.ids.forEach(function (id) {
+      var k = slotOf(id), r2 = L.rects[k]; if (k < 0) return;
+      ctx.save(); ctx.globalAlpha = .92; drawTileTo(ctx, S.reg[id].bmp, S.reg[id], r2[0] + d.dx, r2[1] + d.dy, r2[2], r2[3]);
+      ctx.globalAlpha = 1; ctx.strokeStyle = cssVar('--text'); ctx.lineWidth = 3; ctx.strokeRect(r2[0] + d.dx + 1.5, r2[1] + d.dy + 1.5, r2[2] - 3, r2[3] - 3); ctx.restore();
+    });
+  }
+  if (d && d.mode === 'box') {
+    ctx.save(); ctx.strokeStyle = cssVar('--text'); ctx.fillStyle = 'rgba(128,128,128,.18)'; ctx.lineWidth = 2; ctx.setLineDash([5, 4]);
+    var bx = Math.min(d.x0, d.x1), by = Math.min(d.y0, d.y1), bw = Math.abs(d.x1 - d.x0), bh = Math.abs(d.y1 - d.y0);
+    ctx.fillRect(bx, by, bw, bh); ctx.strokeRect(bx, by, bw, bh); ctx.restore();
+  }
+  if (count() === 0 && !S.full) {
+    ctx.fillStyle = cssVar('--sub'); ctx.font = '13px Helvetica, Arial, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    if ('letterSpacing' in ctx) ctx.letterSpacing = '4px';
+    var msg = 'TAP HERE OR ADD TO CHOOSE PHOTOS';
+    if (ctx.measureText(msg).width > cssW - 40) {            /* too wide for the screen: two centred lines */
+      ctx.fillText('TAP HERE OR ADD', cssW / 2, cssH / 2 - 12);
+      ctx.fillText('TO CHOOSE PHOTOS', cssW / 2, cssH / 2 + 12);
+    } else ctx.fillText(msg, cssW / 2, cssH / 2);
+    if ('letterSpacing' in ctx) ctx.letterSpacing = '0px';
+  }
+}
+
+/* --------------------------------------------------------------- popup UI */
+function buildPad() {
+  var h = '';
+  for (var r = 0; r < 3; r++) for (var c = 0; c < 3; c++) h += '<button data-ax="' + (c - 1) + '" data-ay="' + (r - 1) + '" aria-label="align"></button>';
+  $('apad').innerHTML = h;
+}
+function effAlign(id) {
+  var v = S.reg[id], k = slotOf(id), r = Math.floor(k / S.cols), c = k % S.cols, cm = (S.cols - 1) / 2, rm = (S.rows - 1) / 2;
+  var ax = v.ax !== null ? v.ax : (c < cm ? 1 : (c > cm ? -1 : 0));
+  var ay = v.ay !== null ? v.ay : (r < rm ? 1 : (r > rm ? -1 : 0));
+  return [ax, ay];
+}
+function openPop(id) {
+  S.popId = id; $('pop').hidden = false; refreshPop(); invalidate();
+  status('Tile menu. Tap elsewhere to close.');
+}
+function closePop() { if (S.popId !== null) { S.popId = null; $('pop').hidden = true; invalidate(); } }
+function refreshPop() {
+  if (S.popId === null) return;
+  var a = effAlign(S.popId), btns = $('apad').children;
+  for (var i = 0; i < btns.length; i++) {
+    var on = +btns[i].getAttribute('data-ax') === a[0] && +btns[i].getAttribute('data-ay') === a[1];
+    btns[i].className = on ? 'cur' : '';
+  }
+  positionPop();
+}
+function positionPop() {
+  var p = $('pop');
+  if (S.popId === null || PHONE) return;
+  if (!L) L = computeView();
+  var k = slotOf(S.popId); if (k < 0) return;
+  var t = L.rects[k], W = cssW, H = cssH;
+  p.style.left = '0px'; p.style.top = '0px';
+  var pw = p.offsetWidth, ph = p.offsetHeight, px, py;
+  var cx = Math.max(8, Math.min(t[0] + t[2] / 2 - pw / 2, W - pw - 8));
+  if (t[0] + t[2] + 14 + pw <= W - 8) { px = t[0] + t[2] + 14; py = Math.max(8, Math.min(t[1] - 10, H - ph - 8)); }
+  else if (t[0] - 14 - pw >= 8) { px = t[0] - 14 - pw; py = Math.max(8, Math.min(t[1] - 10, H - ph - 8)); }
+  else if (t[1] - 10 - ph >= 8) { px = cx; py = t[1] - 10 - ph; }
+  else { px = cx; py = Math.max(8, Math.min(t[1] + t[3] + 10, H - ph - 8)); }
+  p.style.left = Math.round(px) + 'px'; p.style.top = Math.round(py) + 'px';
+}
+
+/* ---------------------------------------------------------------- pointer */
+function pt(e) { var r = cv.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; }
+function hitTile(p) {
+  if (!L) return -1;
+  for (var i = L.rects.length - 1; i >= 0; i--) {
+    var r = L.rects[i]; if (!r) continue;
+    if (p.x >= r[0] && p.x < r[0] + r[2] && p.y >= r[1] && p.y < r[1] + r[3]) return i;
+  }
+  return -1;
+}
+function cellAt(p) {
+  for (var i = 0; i < L.cells.length; i++) {
+    var c = L.cells[i];
+    if (p.x >= c[0] && p.x < c[0] + c[2] && p.y >= c[1] && p.y < c[1] + c[3]) return i;
+  }
+  return null;
+}
+var touches = {}, gest = { max: 0, t0: 0, moved: false };
+function touchCount() { return Object.keys(touches).length; }
+function dragRestore(d) {            /* put the grid back to what it was before this drag grew it */
+  if (!d || !d.orig) return;
+  var o = d.orig; S.slots = o.slots; S.cols = o.cols; S.rows = o.rows; d.src = o.src; d.orig = null;
+}
+function dragGrow(d, wantC, wantR) { /* add one column and/or row while dragging past the edge (sticky until release) */
+  var o = d.orig || { slots: S.slots, cols: S.cols, rows: S.rows, src: d.src };
+  var nc = S.cols + (wantC ? 1 : 0), nr = S.rows + (wantR ? 1 : 0);
+  var n = reshapeSlots(S.slots, S.cols, S.rows, nc, nr); if (!n) return false;
+  var r = Math.floor(d.src / S.cols), c = d.src % S.cols;
+  d.orig = o; S.slots = n; S.cols = nc; S.rows = nr; d.src = r * nc + c;
+  L = computeView(); return true;
+}
+function trimPlan(slots, cols, rows, minC, minR) {   /* drop a new column / row that ended up unused */
+  var i, empty;
+  for (;;) {
+    if (cols <= minC) break;
+    empty = true; for (i = 0; i < rows; i++) if (slots[i * cols + cols - 1] !== null) { empty = false; break; }
+    if (!empty) break;
+    slots = reshapeSlots(slots, cols, rows, cols - 1, rows); cols--;
+  }
+  while (rows > minR) {
+    empty = true; for (i = 0; i < cols; i++) if (slots[(rows - 1) * cols + i] !== null) { empty = false; break; }
+    if (!empty) break;
+    slots = slots.slice(0, slots.length - cols); rows--;
+  }
+  return { slots: slots, cols: cols, rows: rows };
+}
+function fingerGesture() {           /* 2-finger tap = undo, 3-finger tap = redo */
+  if (gest.max >= 2 && !gest.moved && Date.now() - gest.t0 < 450) { if (gest.max === 2) undo(); else redo(); }
+  gest.max = 0; gest.moved = false;
+}
+cv.addEventListener('pointerdown', function (e) {
+  if (e.pointerType === 'touch') {
+    var pt0 = pt(e);
+    if (!touchCount()) { gest.max = 0; gest.moved = false; gest.t0 = Date.now(); }
+    touches[e.pointerId] = { x: pt0.x, y: pt0.y };
+    gest.max = Math.max(gest.max, touchCount());
+    if (touchCount() >= 2) { var dd = S.drag; dragRestore(dd); S.press = null; S.drag = null; closePop(); invalidate(); return; }
+  }
+  if (S.busy) return;
+  if (S.full) {
+    var now = Date.now();
+    if (now - S.lastTap < 350) exitFull();
+    S.lastTap = now; return;
+  }
+  if (e.button !== undefined && e.button > 0) return;
+  try { cv.setPointerCapture(e.pointerId); } catch (x) { /* ignore */ }
+  var p = pt(e);
+  S.press = { x: p.x, y: p.y, k: hitTile(p), moved: false, pid: e.pointerId };
+});
+cv.addEventListener('pointermove', function (e) {
+  var tp = touches[e.pointerId];
+  if (tp) { var q = pt(e); if (Math.abs(q.x - tp.x) + Math.abs(q.y - tp.y) > 24) gest.moved = true; }
+  var pr = S.press; if (!pr || pr.pid !== e.pointerId) return;
+  var p = pt(e);
+  if (!pr.moved) {
+    if (Math.abs(p.x - pr.x) + Math.abs(p.y - pr.y) < 8) return;
+    pr.moved = true;
+    if (pr.k >= 0) {
+      var id = S.slots[pr.k];
+      closePop();
+      if (S.sel.has(id) && S.sel.size >= 2) {
+        var ids = []; S.sel.forEach(function (v) { if (S.slots.indexOf(v) >= 0) ids.push(v); });
+        S.drag = { mode: 'group', id: id, ids: ids, src: pr.k, dx: 0, dy: 0, hover: null, px: pr.x, py: pr.y, orig: null };
+      } else {
+        S.sel.clear();
+        S.drag = { mode: 'tile', id: id, ids: [id], src: pr.k, dx: 0, dy: 0, hover: null, px: pr.x, py: pr.y, orig: null };
+      }
+    } else {
+      S.drag = { mode: 'box', ids: [], x0: pr.x, y0: pr.y, x1: p.x, y1: p.y };
+    }
+  }
+  var d = S.drag; if (!d) return;
+  if (d.mode === 'box') { d.x1 = p.x; d.y1 = p.y; invalidate(); return; }
+  d.dx = p.x - d.px; d.dy = p.y - d.py;
+  var h = cellAt(p);
+  if (h === null) {                                    /* beyond the right / bottom edge: open a new column / row */
+    var re = 0, be = 0; L.cells.forEach(function (c) { re = Math.max(re, c[0] + c[2]); be = Math.max(be, c[1] + c[3]); });
+    var wc = p.x > re && S.cols < MAX_N && !(d.orig && S.cols > d.orig.cols), wr = p.y > be && S.rows < MAX_N && !(d.orig && S.rows > d.orig.rows);
+    if (wc || wr) { if (dragGrow(d, wc, wr)) { p = pt(e); h = cellAt(p); } }
+  }
+  if (h === null && d.orig) {                          /* grid was grown by this drag: the margin beside it counts as its nearest cell */
+    var x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;
+    L.cells.forEach(function (c) { x0 = Math.min(x0, c[0]); x1 = Math.max(x1, c[0] + c[2]); y0 = Math.min(y0, c[1]); y1 = Math.max(y1, c[1] + c[3]); });
+    h = cellAt({ x: Math.min(Math.max(p.x, x0 + 1), x1 - 1), y: Math.min(Math.max(p.y, y0 + 1), y1 - 1) });
+  }
+  var changed = h !== d.hover; d.hover = h;
+  if (changed) dragStatus(d);
+  invalidate();
+});
+function dragStatus(d) {
+  if (d.hover === null) { status('Outside the grid - releasing here puts it back. Drag past the right or bottom edge to add a column or row.'); return; }
+  if (d.hover === d.src) { status(d.mode === 'group' ? 'Drop the group on another cell to move it.' : 'Drop on another cell to move it.'); return; }
+  if (d.mode === 'group') {
+    var g = groupPlan(d);
+    if (g.err) status(g.err, true); else status('Moves ' + d.ids.length + ' tiles as a block' + ((g.cols !== S.cols || g.rows !== S.rows) ? ' (the grid grows to ' + g.cols + ' x ' + g.rows + ').' : '.'));
+  } else {
+    var pl = planDrop(S.slots, S.cols, S.rows, d.src, d.hover, d.id);
+    if (!pl) status('That row is full and the grid is already ' + MAX_N + ' columns wide.', true);
+    else if (pl.dir === null) status('Empty slot - the image stays there.');
+    else status('Row ' + (Math.floor(d.hover / S.cols) + 1) + ' shifts ' + pl.dir + (pl.cols !== S.cols ? ' (a column is added).' : '.'));
+  }
+}
+function groupPlan(d) {
+  var sr = Math.floor(d.src / S.cols), sc = d.src % S.cols, hr = Math.floor(d.hover / S.cols), hc = d.hover % S.cols;
+  var picked = d.ids.map(function (id) { return slotOf(id); });
+  return planGroupMove(S.slots, S.cols, S.rows, picked, hr - sr, hc - sc);
+}
+function endPress(e) {
+  if (touches[e.pointerId]) { delete touches[e.pointerId]; if (!touchCount()) fingerGesture(); }
+  var pr = S.press; if (!pr || pr.pid !== e.pointerId) return;
+  S.press = null;
+  var d = S.drag; S.drag = null;
+  if (!pr.moved) { tap(pr); return; }
+  if (!d) return;
+  if (d.mode === 'box') {
+    var x0 = Math.min(d.x0, d.x1), x1 = Math.max(d.x0, d.x1), y0 = Math.min(d.y0, d.y1), y1 = Math.max(d.y0, d.y1), n = 0;
+    L.rects.forEach(function (r, i) {
+      if (!r || S.slots[i] === null) return;
+      if (r[0] < x1 && r[0] + r[2] > x0 && r[1] < y1 && r[1] + r[3] > y0) { S.sel.add(S.slots[i]); n++; }
+    });
+    status(S.sel.size ? S.sel.size + ' selected - drag one of them to move the group.' : 'Nothing selected.');
+    invalidate(); return;
+  }
+  if (d.hover === null || d.hover === d.src) { dragRestore(d); status(d.mode === 'group' ? 'Group put back.' : 'Put back.'); L = computeView(); invalidate(); return; }
+  if (d.mode === 'group') {
+    var g = groupPlan(d), go = d.orig;
+    if (g.err) { dragRestore(d); L = computeView(); status(g.err, true); invalidate(); return; }
+    if (go) { dragRestore(d); g = trimPlan(g.slots, g.cols, g.rows, go.cols, go.rows); }
+    pushUndo(); S.slots = g.slots; S.cols = g.cols; S.rows = g.rows; syncUi();
+    status('Moved ' + d.ids.length + ' tiles.');
+  } else {
+    var pl = planDrop(S.slots, S.cols, S.rows, d.src, d.hover, d.id), erow = Math.floor(d.hover / S.cols) + 1, grown = !!d.orig;
+    var o = d.orig, rows2 = S.rows;
+    if (!pl) { dragRestore(d); L = computeView(); status('That row is full and the grid is already ' + MAX_N + ' columns wide.', true); invalidate(); return; }
+    if (o) { dragRestore(d); pl = trimPlan(pl.slots, pl.cols, rows2, o.cols, o.rows); pl.dir = null; }
+    else pl.rows = S.rows;
+    pushUndo(); S.slots = pl.slots; S.cols = pl.cols; S.rows = pl.rows; syncUi();
+    status(grown ? 'Moved - grid is now ' + S.cols + ' x ' + S.rows + '.' : (pl.dir === null ? 'Moved to the empty slot.' : 'Row ' + erow + ' shifted ' + pl.dir + '.'));
+  }
+  L = computeView(); invalidate();
+}
+cv.addEventListener('pointerup', endPress);
+cv.addEventListener('pointercancel', function (e) {
+  if (touches[e.pointerId]) { delete touches[e.pointerId]; if (!touchCount()) { gest.max = 0; gest.moved = false; } }
+  dragRestore(S.drag); S.press = null; S.drag = null; L = computeView(); invalidate();
+});
+
+function tap(pr) {
+  if (count() === 0) { $('file').click(); return; }
+  var now = Date.now(), tid = pr.k >= 0 ? S.slots[pr.k] : null;
+  var dbl = tid !== null && S.lastTapId === tid && now - S.lastTapAt < 500;
+  var hadPop = S.popId !== null;
+  S.lastTapAt = now; S.lastTapId = tid;
+  if (dbl) {                                          /* double-tap: open the menu, selection as it was before the first tap */
+    if (S.lastToggled) { if (S.sel.has(tid)) S.sel.delete(tid); else S.sel.add(tid); }
+    S.lastTapId = null; S.lastToggled = false; openPop(tid); invalidate(); return;
+  }
+  S.lastToggled = false;
+  if (hadPop) { closePop(); invalidate(); return; }   /* menu open: a tap only closes it */
+  if (tid !== null) {
+    if (S.sel.has(tid)) S.sel.delete(tid); else S.sel.add(tid);
+    S.lastToggled = true;
+    status(S.sel.size + ' selected - drag one to move the group. Double-tap a tile for its menu.');
+  } else { S.sel.clear(); status('Selection cleared.'); }
+  invalidate();
+}
+
+/* ---------------------------------------------------------------- commands */
+function setTheme(t) {
+  document.body.setAttribute('data-theme', t);
+  var m = document.querySelector('meta[name="theme-color"]'); if (m) m.setAttribute('content', t === 'dark' ? '#1A1A1A' : '#E8E5DF');
+  try { localStorage.setItem('pg-theme', t); } catch (e) { /* ignore */ }
+  invalidate();
+}
+function syncUi() {
+  Array.prototype.forEach.call(document.querySelectorAll('.colsVal'), function (e) { e.textContent = S.cols; });
+  Array.prototype.forEach.call(document.querySelectorAll('.rowsVal'), function (e) { e.textContent = S.rows; });
+  ['bGrid', 'bGrid2'].forEach(function (k) { var g = $(k); if (g) g.textContent = S.showGrid ? 'GRID: ON' : 'GRID: OFF'; });
+}
+function toggleGrid() {
+  S.showGrid = !S.showGrid; syncUi(); invalidate();
+  try { localStorage.setItem('pg-grid', S.showGrid ? '1' : '0'); } catch (e) { /* ignore */ }
+  status(S.showGrid ? 'Grid outlines shown.' : 'Grid outlines hidden.');
+}
+function enterFull() {
+  if (!count()) { status('Add photos first.', true); return; }
+  closePop(); S.full = true; document.body.classList.add('full'); $('fsx').hidden = false; $('sheet').hidden = true;
+  var el = document.documentElement, rq = el.requestFullscreen || el.webkitRequestFullscreen;
+  if (rq) { try { var pr = rq.call(el); if (pr && pr.catch) pr.catch(function () {}); } catch (e) { /* not supported on this device */ } }
+  setTimeout(resize, 60);
+}
+function exitFull() {
+  if (!S.full) return;
+  S.full = false; document.body.classList.remove('full'); $('fsx').hidden = true;
+  var ex = document.exitFullscreen || document.webkitExitFullscreen;
+  if (ex && (document.fullscreenElement || document.webkitFullscreenElement)) { try { var pr = ex.call(document); if (pr && pr.catch) pr.catch(function () {}); } catch (e) { /* ignore */ } }
+  setTimeout(resize, 60);
+}
+document.addEventListener('fullscreenchange', function () { if (S.full && !document.fullscreenElement) exitFull(); });
+
+/* ------------------------------------------------------------------ export */
+function nameBase() { return ($('expname').value || 'PhotoGrid').replace(/[^A-Za-z0-9._ -]/g, '').trim() || 'PhotoGrid'; }
+function storedNext(base) {
+  try { return (parseInt(localStorage.getItem('pg-count-' + base), 10) || 0) + 1; } catch (e) { return 1; }
+}
+function showNext() { $('expnext').textContent = 'Saves as: ' + fileName().name; }
+function syncNum() { $('expnum').value = String(storedNext(nameBase())); showNext(); }   /* NEXT NO. follows the saved count for this name */
+function fileName() {
+  var base = nameBase(), n = parseInt($('expnum').value, 10);
+  if (!(n >= 1 && n <= 9999)) n = storedNext(base);
+  return { name: base + '_' + ('00' + n).slice(-3) + (expFmt === 'jpg' ? '.jpg' : '.png'), base: base, n: n };
+}
+function bumpCounter(f) {
+  try { localStorage.setItem('pg-count-' + f.base, String(f.n)); } catch (e) { /* ignore */ }
+  $('expnum').value = String(f.n + 1); showNext();
+}
+$('expname').addEventListener('input', syncNum);
+$('expnum').addEventListener('input', showNext);
+
+async function doExport() {
+  if (S.busy) return;
+  if (!count()) { status('Add photos first.', true); return; }
+  S.busy = true; closePop();
+  try {
+    var sizes = S.slots.map(function (id) { return id === null ? null : effSize(S.reg[id]); });
+    var gm = gridMetrics(sizes, S.cols, S.rows), tw = sum(gm.colW), th = sum(gm.rowH);
+    var pad = (tw / S.cols) / 2, Wn = tw + 2 * pad, Hn = th + 2 * pad;
+    var sc = Math.min(1, Math.sqrt(EXPORT_PX / (Wn * Hn)));         /* stay under the iOS canvas limit */
+    var outW = Math.max(1, Math.round(Wn * sc)), outH = Math.max(1, Math.round(Hn * sc));
+    var aligns = S.slots.map(function (id) { return id === null ? null : [S.reg[id].ax, S.reg[id].ay]; });
+    var lay = computeLayout(sizes, S.cols, S.rows, sc, pad * sc, pad * sc, aligns);
+    var out = mk(outW, outH), oc = out.getContext('2d');
+    oc.fillStyle = dark() ? '#000000' : '#FFFFFF';                  /* matches the current scheme: pure black or pure white */
+    oc.fillRect(0, 0, outW, outH);
+    var total = count(), done = 0;
+    for (var i = 0; i < S.slots.length; i++) {
+      var id = S.slots[i]; if (id === null) continue;
+      status('Rendering ' + (++done) + ' / ' + total + ' ...');
+      await new Promise(function (r) { setTimeout(r, 0); });
+      var info = S.reg[id], r = lay.rects[i], odd = info.rot % 180 !== 0, tw2 = odd ? r[3] : r[2], th2 = odd ? r[2] : r[3];
+      var img = await loadImg(info.file);
+      var tc = scaledCanvas(img.im, img.im.naturalWidth, img.im.naturalHeight, tw2, th2);
+      URL.revokeObjectURL(img.url);
+      drawTileTo(oc, tc, info, r[0], r[1], r[2], r[3]);
+      release(tc);
+    }
+    if (expCanvas) release(expCanvas);
+    expCanvas = out; expDims = { w: outW, h: outH, sc: sc };      /* kept until the sheet is closed so the format can be switched */
+    await encodeExport();
+    $('expShare').hidden = false;
+    syncNum(); $('exp').hidden = false;
+    status('Export ready.');
+    window.__pgLast = { w: outW, h: outH, scale: sc, pad: pad * sc, dark: dark(), blob: expBlob };
+  } catch (err) { status('Export failed: ' + (err && err.message ? err.message : err), true); }
+  S.busy = false;
+}
+function canvasBlob(type, q) { return new Promise(function (res) { expCanvas.toBlob(res, type, q); }); }
+async function encodeExport() {                      /* (re)make the file in the chosen format from the kept canvas */
+  status('Encoding ' + (expFmt === 'jpg' ? 'JPEG' : 'PNG') + ' ...');
+  var blob = await canvasBlob(expFmt === 'jpg' ? 'image/jpeg' : 'image/png', 0.92);
+  if (!blob) throw new Error('The browser could not make the file (too large for memory?).');
+  if (expUrl) URL.revokeObjectURL(expUrl);
+  expBlob = blob; expUrl = URL.createObjectURL(blob);
+  $('expimg').src = expUrl;
+  $('expinfo').textContent = expDims.w + ' x ' + expDims.h + ' px, ' + (blob.size / 1048576).toFixed(1) + ' MB ' + (expFmt === 'jpg' ? 'JPEG' : 'PNG') + (expDims.sc < 1 ? ' (scaled to fit the iPhone/iPad limit)' : '');
+  $('fmtPng').className = 'b' + (expFmt === 'png' ? ' on' : ''); $('fmtJpg').className = 'b' + (expFmt === 'jpg' ? ' on' : '');
+  showNext();
+}
+async function setFormat(fmt) {
+  if (fmt === expFmt || !expCanvas || S.busy) return;
+  expFmt = fmt; S.busy = true;
+  try { await encodeExport(); status('Format: ' + (fmt === 'jpg' ? 'JPEG' : 'PNG') + '.'); } catch (err) { status('Export failed: ' + (err && err.message ? err.message : err), true); }
+  S.busy = false;
+}
+function closeExport() {
+  $('exp').hidden = true;
+  if (expCanvas) { release(expCanvas); expCanvas = null; }
+  if (expUrl) { URL.revokeObjectURL(expUrl); expUrl = ''; } expBlob = null; $('expimg').removeAttribute('src');
+}
+async function shareExport() {
+  if (!expBlob) return;
+  var mime = expFmt === 'jpg' ? 'image/jpeg' : 'image/png';
+  var f = fileName(), file = new File([expBlob], f.name, { type: mime });
+  bumpCounter(f);                                   /* the number is used when SHARE / SAVE is pressed, whatever iOS reports back */
+  if (!(navigator.canShare && navigator.canShare({ files: [file] }))) {   /* no share sheet in this browser: plain file save */
+    var a = document.createElement('a'); a.href = expUrl; a.download = f.name; document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    status('Saved as ' + f.name + '.'); return;
+  }
+  try { await navigator.share({ files: [file] }); status('Shared as ' + f.name + '.'); }
+  catch (e) { if (!e || e.name !== 'AbortError') status('Sharing did not work - press and hold the picture and choose Save to Photos.', true); }
+}
+async function copyExport() {
+  if (!expCanvas) return;
+  if (!(window.ClipboardItem && navigator.clipboard && navigator.clipboard.write)) { status('Copy is not available in this browser.', true); return; }
+  try {                                              /* the clipboard takes PNG; the blob is passed as a promise to stay inside the tap */
+    var png = expFmt === 'png' && expBlob ? Promise.resolve(expBlob) : canvasBlob('image/png');
+    await navigator.clipboard.write([new ClipboardItem({ 'image/png': png })]);
+    status('Copied (as PNG). Paste it into another app.');
+  } catch (e) { status('Copy did not work - use SHARE / SAVE instead.', true); }
+}
+
+/* ------------------------------------------------------------------ wiring */
+document.addEventListener('click', function (e) {
+  var b = e.target.closest ? e.target.closest('[data-cmd]') : null;
+  if (b) {
+    var c = b.getAttribute('data-cmd');
+    if (c === 'add') $('file').click();
+    else if (c === 'theme') setTheme(dark() ? 'light' : 'dark');
+    else if (c === 'undo') undo();
+    else if (c === 'redo') redo();
+    else if (c === 'grid') toggleGrid();
+    else if (c === 'full') enterFull();
+    else if (c === 'exitfull') exitFull();
+    else if (c === 'fit') { closePop(); fitGrid(); $('sheet').hidden = true; }
+    else if (c === 'export') { $('sheet').hidden = true; doExport(); }
+    else if (c === 'cols-') setSize(S.cols - 1, S.rows);
+    else if (c === 'cols+') setSize(S.cols + 1, S.rows);
+    else if (c === 'rows-') setSize(S.cols, S.rows - 1);
+    else if (c === 'rows+') setSize(S.cols, S.rows + 1);
+    else if (c === 'more') $('sheet').hidden = false;
+    else if (c === 'closesheet') $('sheet').hidden = true;
+    else if (c === 'expclose') closeExport();
+    else if (c === 'share') shareExport();
+    else if (c === 'copy') copyExport();
+    else if (c === 'fmt-png') setFormat('png');
+    else if (c === 'fmt-jpg') setFormat('jpg');
+    else if (c === 'clear') {
+      if (b.getAttribute('data-armed')) { b.removeAttribute('data-armed'); b.textContent = 'CLEAR'; $('sheet').hidden = true; clearAll(); }
+      else {
+        b.setAttribute('data-armed', '1'); b.textContent = 'TAP AGAIN';
+        clearTimeout(clearTimer); clearTimer = setTimeout(function () {
+          Array.prototype.forEach.call(document.querySelectorAll('[data-cmd="clear"]'), function (x) { x.removeAttribute('data-armed'); x.textContent = 'CLEAR'; });
+        }, 3000);
+      }
+    }
+    return;
+  }
+  var a = e.target.closest ? e.target.closest('[data-act]') : null;
+  if (a && S.popId !== null) {
+    var act = a.getAttribute('data-act'), id = S.popId;
+    if (act === 'rl') rotate(id, -1); else if (act === 'rr') rotate(id, 1); else if (act === 'r180') rotate(id, 2);
+    else if (act === 'mh') mirror(id, 'h'); else if (act === 'mv') mirror(id, 'v');
+    else if (act === 'dup') duplicate(id); else if (act === 'rm') removeTile(id); else if (act === 'auto') setAlign(id, null, null);
+    if (S.popId !== null) { L = computeView(); refreshPop(); }
+    return;
+  }
+  var ap = e.target.closest ? e.target.closest('#apad button') : null;
+  if (ap && S.popId !== null) { setAlign(S.popId, +ap.getAttribute('data-ax'), +ap.getAttribute('data-ay')); L = computeView(); refreshPop(); }
+});
+$('file').addEventListener('change', function (e) { var l = e.target.files; if (l && l.length) addFiles(l); e.target.value = ''; });
+['dragover', 'drop'].forEach(function (n) {
+  document.addEventListener(n, function (e) {
+    if (!e.dataTransfer || !e.dataTransfer.types || Array.prototype.indexOf.call(e.dataTransfer.types, 'Files') < 0) return;
+    e.preventDefault();
+    if (n === 'drop' && e.dataTransfer.files.length) addFiles(e.dataTransfer.files);
+  });
+});
+document.addEventListener('keydown', function (e) {
+  var t = e.target && e.target.tagName;
+  if (t === 'INPUT' || t === 'TEXTAREA') return;
+  if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z')) { e.preventDefault(); undo(); }
+  else if (e.key === 'Escape') {
+    if (!$('exp').hidden) $('exp').hidden = true;
+    else if (S.full) exitFull();
+    else if (S.popId !== null) closePop();
+    else if (S.sel.size) { S.sel.clear(); invalidate(); }
+  } else if ((e.key === 'Delete' || e.key === 'Backspace') && S.popId !== null) { e.preventDefault(); removeTile(S.popId); }
+});
+window.addEventListener('resize', resize);
+window.addEventListener('orientationchange', function () { setTimeout(resize, 150); });
+if (window.ResizeObserver) new ResizeObserver(function () { resize(); }).observe($('stage'));
+
+buildPad();
+if (PHONE) $('app').appendChild($('pop'));       /* phone: the tile menu sits under the grid, the grid shrinks above it */
+try { S.showGrid = localStorage.getItem('pg-grid') !== '0'; syncUi(); } catch (e) { /* ignore */ }
+try { var th = localStorage.getItem('pg-theme'); if (th === 'light' || th === 'dark') setTheme(th); } catch (e) { /* ignore */ }
+syncUi(); resize();
+window.__pg = { S: S, view: function () { L = computeView(); return L; }, render: render, MAX_N: MAX_N };
+})();
+</script>
+</body>
+</html>
