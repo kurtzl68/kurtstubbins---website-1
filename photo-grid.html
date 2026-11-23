@@ -640,6 +640,13 @@ function trimPlan(slots, cols, rows, minC, minR) {   /* drop a new column / row 
   }
   return { slots: slots, cols: cols, rows: rows };
 }
+function resetTouches() {            /* rotation, app switch or full-screen change can swallow a finger-up: forget all fingers */
+  touches = {}; gest.max = 0; gest.moved = false;
+  var d = S.drag; if (d) dragRestore(d);
+  S.press = null; S.drag = null;
+  if (L) { L = computeView(); invalidate(); }
+}
+window.__pgTouches = function () { return touches; };
 function fingerGesture() {           /* 2-finger tap = undo, 3-finger tap = redo */
   if (gest.max >= 2 && !gest.moved && Date.now() - gest.t0 < 450) { if (gest.max === 2) undo(); else redo(); }
   gest.max = 0; gest.moved = false;
@@ -648,7 +655,8 @@ cv.addEventListener('pointerdown', function (e) {
   if (e.pointerType === 'touch') {
     var pt0 = pt(e);
     if (!touchCount()) { gest.max = 0; gest.moved = false; gest.t0 = Date.now(); }
-    touches[e.pointerId] = { x: pt0.x, y: pt0.y };
+    Object.keys(touches).forEach(function (k) { if (Date.now() - touches[k].t > 3000) delete touches[k]; });   /* a finger whose release was lost */
+    touches[e.pointerId] = { x: pt0.x, y: pt0.y, t: Date.now() };
     gest.max = Math.max(gest.max, touchCount());
     if (touchCount() >= 2) { var dd = S.drag; dragRestore(dd); S.press = null; S.drag = null; closePop(); invalidate(); return; }
   }
@@ -812,7 +820,8 @@ function exitFull() {
   if (ex && (document.fullscreenElement || document.webkitFullscreenElement)) { try { var pr = ex.call(document); if (pr && pr.catch) pr.catch(function () {}); } catch (e) { /* ignore */ } }
   setTimeout(resize, 60);
 }
-document.addEventListener('fullscreenchange', function () { if (S.full && !document.fullscreenElement) exitFull(); });
+document.addEventListener('fullscreenchange', function () { resetTouches(); if (S.full && !document.fullscreenElement) exitFull(); });
+document.addEventListener('webkitfullscreenchange', function () { resetTouches(); if (S.full && !document.webkitFullscreenElement && !document.fullscreenElement) exitFull(); });
 
 /* ------------------------------------------------------------------ export */
 function nameBase() { return ($('expname').value || 'PhotoGrid').replace(/[^A-Za-z0-9._ -]/g, '').trim() || 'PhotoGrid'; }
@@ -983,8 +992,13 @@ document.addEventListener('keydown', function (e) {
     else if (S.sel.size) { S.sel.clear(); invalidate(); }
   } else if ((e.key === 'Delete' || e.key === 'Backspace') && S.popId !== null) { e.preventDefault(); removeTile(S.popId); }
 });
-window.addEventListener('resize', resize);
-window.addEventListener('orientationchange', function () { setTimeout(resize, 150); });
+window.addEventListener('resize', function () { resetTouches(); resize(); });
+['pointerup', 'pointercancel'].forEach(function (n) {   /* a finger lifted anywhere is no longer down */
+  window.addEventListener(n, function (e) { if (touches[e.pointerId] && e.target !== cv) { delete touches[e.pointerId]; if (!touchCount()) { gest.max = 0; gest.moved = false; } } }, true);
+});
+['blur', 'pagehide'].forEach(function (n) { window.addEventListener(n, resetTouches); });
+document.addEventListener('visibilitychange', resetTouches);
+window.addEventListener('orientationchange', function () { resetTouches(); setTimeout(function () { resetTouches(); resize(); }, 150); });
 if (window.ResizeObserver) new ResizeObserver(function () { resize(); }).observe($('stage'));
 
 buildPad();
