@@ -370,13 +370,14 @@ function growToFit(extra) {
 }
 function slotOf(id) { return S.slots.indexOf(id); }
 function rotate(id, steps) {
-  pushUndo(); var v = S.reg[id]; v.rot = (v.rot + 90 * steps + 360) % 360;
-  status('Rotated (now ' + v.rot + ' degrees).'); invalidate();
+  var ids = removeIds(id); pushUndo();
+  ids.forEach(function (t) { var v = S.reg[t]; v.rot = (v.rot + 90 * steps + 360) % 360; });
+  status(ids.length > 1 ? 'Rotated ' + ids.length + ' tiles.' : 'Rotated (now ' + S.reg[id].rot + ' degrees).'); invalidate();
 }
 function mirror(id, axis) {
-  pushUndo(); var v = S.reg[id];
-  if (axis === 'h') v.mx = !v.mx; else v.my = !v.my;
-  status(axis === 'h' ? 'Mirrored left-right.' : 'Mirrored top-bottom.'); invalidate();
+  var ids = removeIds(id); pushUndo();
+  ids.forEach(function (t) { var v = S.reg[t]; if (axis === 'h') v.mx = !v.mx; else v.my = !v.my; });
+  status((ids.length > 1 ? ids.length + ' tiles mirrored ' : 'Mirrored ') + (axis === 'h' ? 'left-right.' : 'top-bottom.')); invalidate();
 }
 function duplicate(id) {
   if (count() >= MAX_N * MAX_N) { status('The grid is full (' + MAX_N + ' x ' + MAX_N + ').', true); return; }
@@ -402,8 +403,9 @@ function removeTile(id) {
   status(ids.length > 1 ? 'Removed ' + ids.length + ' tiles. Slots left open.' : 'Removed. Slot left open.'); invalidate();
 }
 function setAlign(id, ax, ay) {
-  pushUndo(); var v = S.reg[id]; v.ax = ax; v.ay = ay;
-  status(ax === null ? 'Alignment: toward the centre.' : 'Aligned.'); invalidate();
+  var ids = removeIds(id); pushUndo();
+  ids.forEach(function (t) { var v = S.reg[t]; v.ax = ax; v.ay = ay; });
+  status((ids.length > 1 ? ids.length + ' tiles: ' : '') + (ax === null ? 'alignment toward the centre.' : 'aligned.')); invalidate();
 }
 function setSize(c, r) {
   c = Math.max(MIN_N, Math.min(MAX_N, c)); r = Math.max(MIN_N, Math.min(MAX_N, r));
@@ -561,7 +563,7 @@ function effAlign(id) {
   return [ax, ay];
 }
 function openPop(id) {
-  S.popId = id; $('pop').hidden = false; refreshPop(); invalidate();
+  S.popId = id; S.popAt = Date.now(); $('pop').hidden = false; refreshPop(); invalidate();
   status('Tile menu. Tap elsewhere to close.');
 }
 function closePop() { if (S.popId !== null) { S.popId = null; $('pop').hidden = true; invalidate(); } }
@@ -950,6 +952,7 @@ document.addEventListener('click', function (e) {
     return;
   }
   var a = e.target.closest ? e.target.closest('[data-act]') : null;
+  if ((a || (e.target.closest && e.target.closest('#apad button'))) && Date.now() - (S.popAt || 0) < 500) return;   /* the tap that opened the menu must not click a button that moved under the finger */
   if (a && S.popId !== null) {
     var act = a.getAttribute('data-act'), id = S.popId;
     if (act === 'rl') rotate(id, -1); else if (act === 'rr') rotate(id, 1); else if (act === 'r180') rotate(id, 2);
