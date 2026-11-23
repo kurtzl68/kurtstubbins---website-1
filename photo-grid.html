@@ -998,7 +998,19 @@ window.addEventListener('resize', function () { resetTouches(); resize(); });
 });
 ['blur', 'pagehide'].forEach(function (n) { window.addEventListener(n, resetTouches); });
 document.addEventListener('visibilitychange', resetTouches);
-window.addEventListener('orientationchange', function () { resetTouches(); setTimeout(function () { resetTouches(); resize(); }, 150); });
+var relayoutTimers = [], lastLandscape = window.innerWidth > window.innerHeight;
+function relayoutBurst() {   /* iOS home-screen apps can keep stale layout/hit areas after rotation: rebuild over the first second */
+  relayoutTimers.forEach(clearTimeout); relayoutTimers = [];
+  [0, 150, 400, 800, 1200].forEach(function (ms) {
+    relayoutTimers.push(setTimeout(function () { try { window.scrollTo(0, 0); } catch (e) { /* ignore */ } resetTouches(); resize(); }, ms));
+  });
+}
+function onRotated() { if (S.full) exitFull(); relayoutBurst(); }
+window.addEventListener('orientationchange', onRotated);
+window.addEventListener('resize', function () {
+  var ls = window.innerWidth > window.innerHeight;
+  if (ls !== lastLandscape) { lastLandscape = ls; onRotated(); }
+});
 if (window.ResizeObserver) new ResizeObserver(function () { resize(); }).observe($('stage'));
 
 buildPad();
