@@ -89,6 +89,7 @@
     <div class="lbl">PIXELS <span>(blank = keep)</span></div>
     <div class="grid">
       <input class="field" id="pw" type="text" inputmode="numeric" autocomplete="off" placeholder="W" aria-label="Width in pixels">
+      <button class="b" id="swapBtn" type="button" aria-label="Swap width and height" style="flex:0 0 48px;width:48px;padding:0">&lt;&gt;</button>
       <input class="field" id="ph" type="text" inputmode="numeric" autocomplete="off" placeholder="H" aria-label="Height in pixels">
     </div>
     <div class="mono" id="help" style="margin-top:8px"></div>
@@ -536,6 +537,11 @@
   $('vdl').addEventListener('click', function () {
     var it = items[viewIdx]; if (!it || !it.res) return;
     download(it.res.blob, it.res.name); setStatus('Download started. Look in Downloads in Safari.', 'ok');
+  });
+  $('swapBtn').addEventListener('click', function () {
+    var w = $('pw'), h = $('ph'), t = w.value;
+    w.value = h.value; h.value = t;
+    w.dispatchEvent(new Event('input')); h.dispatchEvent(new Event('input'));
   });
 })();
 </script>
