@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="robots" content="noindex, nofollow">
+<meta name="apple-mobile-web-app-title" content="Compressor">
+<title>COMPRESSOR</title>
+<style>
+  :root, body[data-theme="dark"] {
+    --bg:#1A1A1A; --card:#252525; --border:#333333; --text:#E8E5DF; --label:#B8B3AB; --sub:#CFCAC2;
+    --accbg:#E8E5DF; --accfg:#1A1A1A; --btn:#2E2E2E; --ok:#7DBF8E; --err:#D4845A; --warn:#D4A55A; --track:#8A857E;
+  }
+  body[data-theme="light"] {
+    --bg:#E8E5DF; --card:#FFFFFF; --border:#D0CCC4; --text:#1A1A1A; --label:#4A4742; --sub:#3A3835;
+    --accbg:#1A1A1A; --accfg:#FFFFFF; --btn:#FFFFFF; --ok:#3F6B4C; --err:#8A431F; --warn:#7A5214; --track:#6B665F;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  html, body { background: var(--bg); color: var(--text); font-family: Georgia, serif; -webkit-text-size-adjust: 100%; }
+  body { padding: env(safe-area-inset-top) env(safe-area-inset-right) calc(env(safe-area-inset-bottom) + 110px) env(safe-area-inset-left); }
+  #app { max-width: 480px; margin: 0 auto; min-height: 100vh; }
+  .top { display: flex; align-items: center; gap: 6px; height: 38px; padding: 0 12px; border-bottom: 1px solid var(--border); }
+  .top b { font: 700 12px Helvetica, Arial, sans-serif; letter-spacing: .12em; white-space: nowrap; }
+  .top .sp { margin-left: auto; }
+  .top button { background: none; border: 0; color: var(--text); padding: 6px; flex: none; }
+  .pad { padding: 0 14px 18px; }
+  .mono { font: 12px "Courier New", monospace; color: var(--sub); }
+  .lbl { font: 700 11px Helvetica, Arial, sans-serif; letter-spacing: .14em; color: var(--label); margin: 14px 0 6px; }
+  .lbl span { font-weight: 400; letter-spacing: .04em; }
+  .b { display: block; width: 100%; background: var(--btn); color: var(--text); border: 1px solid var(--border); border-radius: 0;
+       font: 700 12px Helvetica, Arial, sans-serif; letter-spacing: .08em; padding: 12px 6px; text-align: center; cursor: pointer;
+       -webkit-appearance: none; appearance: none; touch-action: manipulation; user-select: none; -webkit-user-select: none; }
+  .b.acc { background: var(--accbg); color: var(--accfg); border-color: var(--accbg); }
+  .b[disabled] { opacity: .45; }
+  .grid { display: flex; gap: 6px; }
+  .grid > * { flex: 1; min-width: 0; }
+  .gap6 { margin-top: 6px; }
+  .field { background: var(--card); border: 1px solid var(--border); padding: 11px 10px; width: 100%; color: var(--text); font: 15px "Courier New", monospace; border-radius: 0; -webkit-appearance: none; appearance: none; }
+  .field::placeholder { color: var(--track); }
+  .note { border-left: 2px solid var(--label); padding: 4px 10px; margin-top: 12px; font-size: 14px; line-height: 1.45; }
+  .note.warn { border-left-color: var(--err); }
+  .hide { display: none !important; }
+  #drop { border: 1px dashed var(--track); padding: 14px 10px; text-align: center; margin-bottom: 6px; }
+  #drop.over { background: var(--card); border-style: solid; }
+  #statusWrap { padding: 10px 0 0; min-height: 30px; }
+  #status { font: 12px "Courier New", monospace; color: var(--sub); white-space: pre-wrap; }
+  #status.err { color: var(--err); } #status.ok { color: var(--ok); } #status.warn { color: var(--warn); }
+  #bar { height: 3px; background: var(--border); margin-top: 5px; display: none; }
+  #bar i { display: block; height: 3px; width: 0; background: var(--text); }
+  .rule { height: 1px; background: var(--border); margin: 14px 0; }
+  #list { margin-top: 2px; }
+  .row { display: flex; gap: 10px; align-items: center; background: var(--card); border: 1px solid var(--border); padding: 8px; margin-bottom: 6px; }
+  .row.done { cursor: pointer; }
+  .row .th { flex: none; width: 52px; height: 52px; background: var(--bg); border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; overflow: hidden; }
+  .row .th img { max-width: 100%; max-height: 100%; display: block; }
+  .row .meta { flex: 1; min-width: 0; }
+  .row .nm { font: 700 11px Helvetica, Arial, sans-serif; letter-spacing: .04em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .row .st { font: 11px "Courier New", monospace; color: var(--sub); margin-top: 3px; line-height: 1.35; word-break: break-word; }
+  .row .st.ok { color: var(--ok); } .row .st.warn { color: var(--warn); } .row .st.err { color: var(--err); }
+  .row .go { flex: none; font: 700 10px Helvetica, Arial, sans-serif; letter-spacing: .08em; color: var(--label); }
+  #view { position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 30; background: var(--bg); overflow-y: auto; -webkit-overflow-scrolling: touch;
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) calc(env(safe-area-inset-bottom) + 40px) env(safe-area-inset-left); }
+  #view .in { max-width: 480px; margin: 0 auto; padding: 0 14px 20px; }
+  #view .imgcard { background: var(--card); border: 1px solid var(--border); padding: 10px; }
+  #vimg { display: block; max-width: 100%; max-height: 60vh; margin: 0 auto; }
+</style>
+</head>
+<body data-theme="dark">
+<div id="app">
+  <div class="top">
+    <b>COMPRESSOR</b>
+    <button class="sp" id="themeBtn" aria-label="Light or dark">
+      <svg width="18" height="18" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.5" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M8 1.5 A6.5 6.5 0 0 1 8 14.5 Z" fill="currentColor"/></svg>
+    </button>
+  </div>
+
+  <div class="pad">
+    <div class="lbl">PHOTOS</div>
+    <div id="drop">
+      <button class="b acc" id="addBtn">ADD PHOTOS</button>
+      <div class="mono" style="margin-top:8px">JPG and PNG. You can also drop photos onto this page if your device allows it.</div>
+    </div>
+    <input type="file" id="fileIn" accept="image/*" multiple class="hide">
+
+    <div class="lbl">TARGET SIZE <span>(KB, blank = no limit)</span></div>
+    <input class="field" id="tgt" type="text" inputmode="decimal" autocomplete="off" placeholder="blank" aria-label="Target size in KB">
+
+    <div class="lbl">PIXELS <span>(blank = keep)</span></div>
+    <div class="grid">
+      <input class="field" id="pw" type="text" inputmode="numeric" autocomplete="off" placeholder="W" aria-label="Width in pixels">
+      <input class="field" id="ph" type="text" inputmode="numeric" autocomplete="off" placeholder="H" aria-label="Height in pixels">
+    </div>
+    <div class="mono" id="help" style="margin-top:8px"></div>
+
+    <div class="grid gap6" style="margin-top:14px">
+      <button class="b acc" id="runBtn" disabled>COMPRESS ALL</button>
+      <button class="b" id="clearBtn" disabled>CLEAR</button>
+    </div>
+
+    <div id="statusWrap"><div id="status"></div><div id="bar"><i></i></div></div>
+
+    <div class="lbl" id="filesLbl">FILES</div>
+    <div id="list"></div>
+
+    <div id="saveBox" class="hide">
+      <div class="rule"></div>
+      <button class="b acc" id="shareAllBtn">SAVE ALL VIA SHARE SHEET</button>
+      <button class="b gap6" id="zipBtn">DOWNLOAD ALL AS ONE ZIP</button>
+      <div class="note">These are new copies. Your originals are not changed, and a web page cannot replace or delete photos in Photos. After saving, delete the originals in Photos yourself. Tap a finished photo to view it, then press and hold it to save.</div>
+      <div class="note warn" id="exifNote"></div>
+    </div>
+  </div>
+</div>
+
+<div id="view" class="hide">
+  <div class="top">
+    <b id="vtitle">PHOTO</b>
+    <button class="sp" id="vclose" aria-label="Close"><svg width="18" height="18" viewBox="0 0 16 16"><path d="M2 2 L14 14 M14 2 L2 14" stroke="currentColor" stroke-width="1.4" fill="none"/></svg></button>
+  </div>
+  <div class="in">
+    <div class="grid" style="margin:10px 0 8px">
+      <button class="b" id="vprev">&lt; PREVIOUS</button>
+      <button class="b" id="vnext">NEXT &gt;</button>
+    </div>
+    <div class="imgcard"><img id="vimg" alt="Compressed photo"></div>
+    <div class="mono" id="vinfo" style="margin-top:8px"></div>
+    <div class="mono" style="margin-top:6px">Press and hold the photo to save it to Photos.</div>
+    <button class="b acc" id="vshare" style="margin-top:12px">SAVE VIA SHARE SHEET</button>
+    <button class="b gap6" id="vdl">DOWNLOAD TO FILES</button>
+    <button class="b gap6" id="vback">BACK TO LIST</button>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  var MAXA = 12500000;           // most pixels a phone can safely process (same cap as Image Corrector)
+  var $ = function (id) { return document.getElementById(id); };
+  var T = { dark: true };
+  var items = [];                // { file, key, thumb, res, fail }
+  var running = false, viewIdx = -1, viewUrl = null, skippedNote = '';
+
+  // ---------- theme
+  function applyTheme() { document.body.setAttribute('data-theme', T.dark ? 'dark' : 'light'); }
+  $('themeBtn').addEventListener('click', function () { T.dark = !T.dark; applyTheme(); });
+  applyTheme();
+
+  // ---------- small helpers
+  function setStatus(msg, kind, prog) {
+    var st = $('status'); st.textContent = msg || ''; st.className = kind || '';
+    var bar = $('bar');
+    if (typeof prog === 'number') { bar.style.display = 'block'; bar.firstChild.style.width = Math.round(Math.max(0, Math.min(1, prog)) * 100) + '%'; }
+    else { bar.style.display = 'none'; }
+  }
+  function fmtBytes(n) {
+    var kb = n / 1024;
+    return kb >= 1024 ? (kb / 1024).toFixed(2) + ' MB' : kb.toFixed(1) + ' KB';
+  }
+  function isPng(f) { return f.type === 'image/png' || /\.png$/i.test(f.name); }
+  function isJpeg(f) { return f.type === 'image/jpeg' || /\.jpe?g$/i.test(f.name); }
+  function stemOf(f) { return (f.name || 'photo').replace(/\.[^.]*$/, '').replace(/[\\\/:*?"<>|]/g, '_') || 'photo'; }
+  function toBlob(c, type, q) { return new Promise(function (res) { c.toBlob(res, type, q); }); }
+
+  function updateHelp() {
+    var t = $('tgt').value.trim();
+    $('help').textContent = t === ''
+      ? 'No size limit: PNG stays PNG, JPG stays JPG. Only W and H change them.'
+      : 'Size limit set: every photo becomes a JPG at that size. PNG transparency turns black.';
+  }
+  $('tgt').addEventListener('input', updateHelp);
+  updateHelp();
+
+  // ---------- adding photos
+  function addFiles(list) {
+    if (running) return;
+    var added = 0, skipped = 0, dup = 0;
+    for (var i = 0; i < list.length; i++) {
+      var f = list[i];
+      if (!(isPng(f) || isJpeg(f))) { skipped++; continue; }
+      var key = f.name + '|' + f.size + '|' + f.lastModified;
+      if (items.some(function (it) { return it.key === key; })) { dup++; continue; }
+      items.push({ file: f, key: key, thumb: null, res: null, fail: '' });
+      added++;
+    }
+    skippedNote = skipped ? skipped + ' skipped (not JPG or PNG)' : '';
+    renderList();
+    var msg = items.length + ' photo' + (items.length === 1 ? '' : 's') + ' ready' + (added ? ' (+' + added + ' new)' : '');
+    if (dup) msg += '  |  ' + dup + ' already in the list';
+    if (skipped) msg += '  |  ' + skippedNote;
+    setStatus(msg, skipped ? 'warn' : '');
+  }
+  $('addBtn').addEventListener('click', function () { if (!running) $('fileIn').click(); });
+  $('fileIn').addEventListener('change', function () {
+    var fl = Array.prototype.slice.call(this.files || []);
+    this.value = '';
+    addFiles(fl);
+  });
+  var dropEl = $('drop');
+  document.addEventListener('dragover', function (e) { e.preventDefault(); dropEl.classList.add('over'); });
+  document.addEventListener('dragleave', function (e) { if (!e.relatedTarget) dropEl.classList.remove('over'); });
+  document.addEventListener('drop', function (e) {
+    e.preventDefault(); dropEl.classList.remove('over');
+    if (e.dataTransfer && e.dataTransfer.files) addFiles(Array.prototype.slice.call(e.dataTransfer.files));
+  });
+
+  $('clearBtn').addEventListener('click', function () {
+    if (running) return;
+    items = []; skippedNote = '';
+    renderList(); setStatus('');
+  });
+
+  // ---------- list
+  function renderList() {
+    var box = $('list'); box.innerHTML = '';
+    items.forEach(function (it, i) {
+      var row = document.createElement('div'); row.className = 'row' + (it.res ? ' done' : '');
+      var th = document.createElement('div'); th.className = 'th';
+      if (it.thumb) { var im = document.createElement('img'); im.src = it.thumb; im.alt = ''; th.appendChild(im); }
+      var meta = document.createElement('div'); meta.className = 'meta';
+      var nm = document.createElement('div'); nm.className = 'nm'; nm.textContent = it.file.name;
+      var st = document.createElement('div'); st.className = 'st';
+      if (it.res) { st.textContent = it.res.text + '\n' + it.res.name; st.classList.add(it.res.kind); }
+      else if (it.fail) { st.textContent = it.fail; st.classList.add('err'); }
+      else { st.textContent = fmtBytes(it.file.size) + '   waiting'; }
+      meta.appendChild(nm); meta.appendChild(st);
+      row.appendChild(th); row.appendChild(meta);
+      if (it.res) {
+        var go = document.createElement('div'); go.className = 'go'; go.textContent = 'VIEW'; row.appendChild(go);
+        row.addEventListener('click', function () { openView(i); });
+      }
+      box.appendChild(row);
+    });
+    $('filesLbl').textContent = items.length ? 'FILES (' + items.length + ')' : 'FILES';
+    $('runBtn').disabled = running || !items.length;
+    $('clearBtn').disabled = running || !items.length;
+    var anyDone = items.some(function (it) { return !!it.res; });
+    $('saveBox').classList.toggle('hide', !anyDone);
+  }
+
+  // ---------- image loading and drawing
+  function loadImage(file) {
+    return new Promise(function (res, rej) {
+      var url = URL.createObjectURL(file), img = new Image();
+      img.onload = function () { res({ img: img, url: url, w: img.naturalWidth, h: img.naturalHeight }); };
+      img.onerror = function () { URL.revokeObjectURL(url); rej(new Error('Could not open this photo.')); };
+      img.src = url;
+    });
+  }
+  function release(li) { try { URL.revokeObjectURL(li.url); li.img.src = ''; } catch (e) {} }
+  function makeThumb(img, w, h) {
+    var sc = Math.min(1, 120 / Math.max(w, h)), c = document.createElement('canvas');
+    c.width = Math.max(1, Math.round(w * sc)); c.height = Math.max(1, Math.round(h * sc));
+    c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+    var u = c.toDataURL('image/jpeg', 0.7); c.width = 0; return u;
+  }
+  function targetSize(w, h, W, H) {
+    if (W && H) return [W, H];                                   // both: forced, may distort
+    if (W) return [W, Math.max(1, Math.round(h * W / w))];       // one: keep proportions
+    if (H) return [Math.max(1, Math.round(w * H / h)), H];
+    return [w, h];
+  }
+  // Draws the image at nw x nh. Big reductions are done in halving steps (looks better than one jump).
+  function drawScaled(img, w0, h0, nw, nh, black) {
+    var src = img, sw = w0, sh = h0;
+    while (sw >= 2 * nw && sh >= 2 * nh && Math.ceil(sw / 2) * Math.ceil(sh / 2) <= MAXA) {
+      var hw = Math.ceil(sw / 2), hh = Math.ceil(sh / 2), t = document.createElement('canvas');
+      t.width = hw; t.height = hh;
+      var tx = t.getContext('2d'); tx.imageSmoothingEnabled = true; tx.imageSmoothingQuality = 'high';
+      tx.drawImage(src, 0, 0, sw, sh, 0, 0, hw, hh);
+      if (src !== img) src.width = 0;
+      src = t; sw = hw; sh = hh;
+    }
+    var c = document.createElement('canvas'); c.width = nw; c.height = nh;
+    var x = c.getContext('2d'); x.imageSmoothingEnabled = true; x.imageSmoothingQuality = 'high';
+    if (black) { x.fillStyle = '#000'; x.fillRect(0, 0, nw, nh); }
+    x.drawImage(src, 0, 0, sw, sh, 0, 0, nw, nh);
+    if (src !== img) src.width = 0;
+    return c;
+  }
+
+  // ---------- date taken / location (EXIF), JPEG only
+  function readExifSeg(file) {
+    return new Promise(function (res) {
+      var fr = new FileReader();
+      fr.onload = function () { try { res(findExif(new Uint8Array(fr.result))); } catch (e) { res(null); } };
+      fr.onerror = function () { res(null); };
+      fr.readAsArrayBuffer(file.slice(0, 131072));
+    });
+  }
+  function findExif(b) {
+    if (b[0] !== 0xFF || b[1] !== 0xD8) return null;
+    var p = 2;
+    while (p + 4 < b.length) {
+      if (b[p] !== 0xFF) break;
+      var mk = b[p + 1], len = (b[p + 2] << 8) | b[p + 3];
+      if (mk === 0xDA) break;
+      if (mk === 0xE1 && b[p + 4] === 0x45 && b[p + 5] === 0x78 && b[p + 6] === 0x69 && b[p + 7] === 0x66) {
+        var end = p + 2 + len;
+        if (end > b.length) return null;
+        var seg = b.slice(p, end);
+        return fixExif(seg) ? seg : null;
+      }
+      p += 2 + len;
+    }
+    return null;
+  }
+  // The pixels are already turned upright, so the turn tag becomes 1. The old embedded thumbnail is
+  // no longer referenced, so no app shows a stale preview.
+  function fixExif(seg) {
+    try {
+      var t = 10;                              // FFE1, length(2), 'Exif',0,0 -> TIFF header starts at 10
+      if (seg.length < t + 8) return false;
+      var le = seg[t] === 0x49;
+      if (!le && seg[t] !== 0x4D) return false;
+      var r16 = function (o) { return le ? (seg[o] | (seg[o + 1] << 8)) : ((seg[o] << 8) | seg[o + 1]); };
+      var r32 = function (o) { return (le ? (seg[o] | (seg[o + 1] << 8) | (seg[o + 2] << 16) | (seg[o + 3] * 16777216)) : ((seg[o] * 16777216) | (seg[o + 1] << 16) | (seg[o + 2] << 8) | seg[o + 3])) >>> 0; };
+      var ifd = t + r32(t + 4);
+      if (ifd + 2 > seg.length) return false;
+      var n = r16(ifd);
+      if (ifd + 2 + n * 12 + 4 > seg.length) return false;
+      for (var i = 0; i < n; i++) {
+        var e = ifd + 2 + i * 12;
+        if (r16(e) === 0x0112) { if (le) { seg[e + 8] = 1; seg[e + 9] = 0; } else { seg[e + 8] = 0; seg[e + 9] = 1; } }
+      }
+      var np = ifd + 2 + n * 12;
+      seg[np] = 0; seg[np + 1] = 0; seg[np + 2] = 0; seg[np + 3] = 0;
+      return true;
+    } catch (e) { return false; }
+  }
+  function injectExif(blob, seg) {
+    return new Promise(function (res) {
+      var rd = new FileReader();
+      rd.onload = function () {
+        try {
+          var jb = new Uint8Array(rd.result);
+          res(new Blob([jb.slice(0, 2), seg, jb.slice(2)], { type: 'image/jpeg' }));
+        } catch (e) { res(null); }
+      };
+      rd.onerror = function () { res(null); };
+      rd.readAsArrayBuffer(blob);
+    });
+  }
+
+  // ---------- one photo
+  function done(blob, name, status, fmt, w, h, orig, exif) {
+    var text;
+    if (status === 'kept') text = fmt + '  unchanged (' + w + 'x' + h + ')';
+    else if (status === 'copied') text = fmt + '  already under target (' + w + 'x' + h + ')';
+    else if (status === 'over') text = 'OVER  ' + fmtBytes(orig) + ' -> ' + fmtBytes(blob.size) + ' (' + w + 'x' + h + ')';
+    else text = fmt + '  ' + fmtBytes(orig) + ' -> ' + fmtBytes(blob.size) + ' (' + w + 'x' + h + ')';
+    return { blob: blob, name: name, status: status, fmt: fmt, w: w, h: h, orig: orig, exif: exif,
+             text: text, kind: status === 'over' ? 'warn' : 'ok' };
+  }
+  async function processOne(it, W, H, targetKb) {
+    var f = it.file, png = isPng(f), resizing = !!(W || H), stem = stemOf(f);
+    var li = await loadImage(f);
+    try {
+      var w = li.w, h = li.h;
+      try { it.thumb = makeThumb(li.img, w, h); } catch (e) { it.thumb = null; }
+      var sz = targetSize(w, h, W, H), nw = sz[0], nh = sz[1], c, blob;
+
+      if (targetKb === null) {
+        // nothing to change (no pixel size given, or it equals the current size): pass the original through untouched
+        if (!resizing || (nw === w && nh === h)) return done(f, stem + (png ? '.png' : '.jpg'), 'kept', png ? 'PNG' : 'JPG', w, h, f.size, false);
+        if (nw * nh > MAXA) throw new Error('TOO LARGE for this phone (' + nw + 'x' + nh + '). Set W or H smaller.');
+        c = drawScaled(li.img, w, h, nw, nh, false);
+        if (png) {
+          blob = await toBlob(c, 'image/png');
+          c.width = 0;
+          if (!blob) throw new Error('Could not make the PNG.');
+          return done(blob, stem + '.png', 'resized', 'PNG', nw, nh, f.size, false);
+        }
+        blob = await toBlob(c, 'image/jpeg', 0.95);
+        c.width = 0;
+        if (!blob) throw new Error('Could not make the JPG.');
+        var seg0 = await readExifSeg(f), ex0 = false;
+        if (seg0) { var b0 = await injectExif(blob, seg0); if (b0) { blob = b0; ex0 = true; } }
+        return done(blob, stem + '.jpg', 'resized', 'JPG', nw, nh, f.size, ex0);
+      }
+
+      var tb = targetKb * 1024;
+      if (!png && !resizing && f.size <= tb) return done(f, stem + '.jpg', 'copied', 'JPG', w, h, f.size, false);
+      if (nw * nh > MAXA) throw new Error('TOO LARGE for this phone (' + nw + 'x' + nh + '). Set W or H smaller.');
+      var seg = png ? null : await readExifSeg(f), extra = seg ? seg.length : 0;
+      c = drawScaled(li.img, w, h, nw, nh, true);        // PNG transparency becomes black
+      var lo = 1, hi = 95, best = null;
+      while (lo <= hi) {
+        var mid = (lo + hi) >> 1, bb = await toBlob(c, 'image/jpeg', mid / 100);
+        if (!bb) { c.width = 0; throw new Error('Could not make the JPG.'); }
+        if (bb.size + extra <= tb) { best = bb; lo = mid + 1; } else { hi = mid - 1; }
+      }
+      var status = 'ok';
+      if (!best) { best = await toBlob(c, 'image/jpeg', 0.01); status = 'over'; }
+      c.width = 0;
+      if (!best) throw new Error('Could not make the JPG.');
+      var ex = false;
+      if (seg) { var b1 = await injectExif(best, seg); if (b1) { best = b1; ex = true; } }
+      return done(best, stem + '.jpg', status, 'JPG', nw, nh, f.size, ex);
+    } finally { release(li); }
+  }
+
+  // ---------- run all
+  function parsePx(txt, label) {
+    var t = txt.trim();
+    if (t === '') return null;
+    if (!/^\d+$/.test(t)) throw new Error(label + ' must be a whole number (or blank).');
+    var v = parseInt(t, 10);
+    if (v < 1 || v > 20000) throw new Error(label + ' must be between 1 and 20000.');
+    return v;
+  }
+  $('runBtn').addEventListener('click', async function () {
+    if (running || !items.length) return;
+    var tt = $('tgt').value.trim().replace(',', '.'), targetKb = null, W, H;
+    try {
+      if (tt !== '') {
+        targetKb = parseFloat(tt);
+        if (!(targetKb > 0) || !isFinite(targetKb) || !/^\d*\.?\d+$/.test(tt)) throw new Error('Target size must be a number in KB (or blank).');
+      }
+      W = parsePx($('pw').value, 'Width'); H = parsePx($('ph').value, 'Height');
+    } catch (e) { setStatus(e.message, 'err'); return; }
+
+    running = true;
+    items.forEach(function (it) { it.res = null; it.fail = ''; });
+    renderList();
+    var okN = 0, failN = 0, overN = 0, keptN = 0, exN = 0, noExN = 0;
+    for (var i = 0; i < items.length; i++) {
+      var it = items[i];
+      setStatus('Processing ' + (i + 1) + ' of ' + items.length + '...', '', i / items.length);
+      await new Promise(function (r) { setTimeout(r, 30); });
+      try {
+        it.res = await processOne(it, W, H, targetKb);
+        if (it.res.status === 'over') overN++; else if (it.res.status === 'kept' || it.res.status === 'copied') keptN++; else okN++;
+        if (isJpeg(it.file) && it.res.fmt === 'JPG' && it.res.status !== 'kept' && it.res.status !== 'copied') { if (it.res.exif) exN++; else noExN++; }
+      } catch (e) { it.fail = 'FAILED  ' + (e && e.message ? e.message : 'unknown error'); failN++; }
+      renderList();
+    }
+    // unique names so nothing collides when saved together
+    var seen = {};
+    items.forEach(function (it) {
+      if (!it.res) return;
+      var n = it.res.name, k = n.toLowerCase(), c = 1;
+      while (seen[k]) { c++; n = it.res.name.replace(/(\.[^.]+)$/, '_' + c + '$1'); k = n.toLowerCase(); }
+      seen[k] = true; it.res.name = n;
+    });
+    running = false;
+    renderList();
+    var parts = [];
+    if (okN) parts.push(okN + ' compressed');
+    if (keptN) parts.push(keptN + ' unchanged');
+    if (overN) parts.push(overN + ' could not reach the target');
+    if (failN) parts.push(failN + ' failed');
+    setStatus('Done.  ' + (parts.join('  |  ') || 'Nothing processed.') + (skippedNote ? '\n' + skippedNote : ''), failN ? 'err' : (overN ? 'warn' : 'ok'));
+    var en = [];
+    if (exN) en.push('Date taken and location were copied from the original for ' + exN + ' JPG' + (exN === 1 ? '' : 's') + '. Check one saved photo in Photos.');
+    if (noExN) en.push(noExN + ' re-saved JPG' + (noExN === 1 ? ' had' : 's had') + ' no date or location in the file to copy.');
+    $('exifNote').textContent = en.join(' ');
+    $('exifNote').classList.toggle('hide', !en.length);
+  });
+
+  // ---------- saving
+  function fileOf(it) {
+    var type = it.res.blob.type || (/\.png$/i.test(it.res.name) ? 'image/png' : 'image/jpeg');
+    return new File([it.res.blob], it.res.name, { type: type });
+  }
+  function shareList(list, label) {
+    var files;
+    try { files = list.map(fileOf); } catch (e) { setStatus('Sharing is not supported here. Use the download button.', 'err'); return; }
+    if (!(navigator.canShare && navigator.canShare({ files: files }))) { setStatus('Sharing is not supported here. Use the download button.', 'err'); return; }
+    navigator.share({ files: files }).then(function () { setStatus('Shared ' + label + '. Choose Save Image in the sheet to put it in Photos.', 'ok'); })
+      .catch(function (e) { if (e && e.name !== 'AbortError') setStatus('Share failed: ' + e.message, 'err'); });
+  }
+  function download(blob, name) {
+    var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name;
+    document.body.appendChild(a); a.click();
+    setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 4000);
+  }
+  $('shareAllBtn').addEventListener('click', function () {
+    var list = items.filter(function (it) { return !!it.res; });
+    if (list.length) shareList(list, list.length + ' photo' + (list.length === 1 ? '' : 's'));
+  });
+
+  // store-only ZIP, built piece by piece so only one photo is read into memory at a time
+  var CRC = (function () { var t = [], n, k, c; for (n = 0; n < 256; n++) { c = n; for (k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+  function crc32(u8) { var c = 0xFFFFFFFF; for (var i = 0; i < u8.length; i++) c = CRC[(c ^ u8[i]) & 0xFF] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; }
+  function le16(v) { return [v & 255, (v >>> 8) & 255]; }
+  function le32(v) { return [v & 255, (v >>> 8) & 255, (v >>> 16) & 255, (v >>> 24) & 255]; }
+  async function makeZip(list) {
+    var d = new Date(), dt = ((d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate(),
+        tm = (d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1);
+    var parts = [], central = [], offset = 0, enc = new TextEncoder();
+    for (var i = 0; i < list.length; i++) {
+      var nameB = enc.encode(list[i].res.name), blob = list[i].res.blob;
+      var data = new Uint8Array(await blob.arrayBuffer()), crc = crc32(data), size = data.length;
+      var lh = new Uint8Array([].concat(le32(0x04034b50), le16(20), le16(0x0800), le16(0), le16(tm), le16(dt), le32(crc), le32(size), le32(size), le16(nameB.length), le16(0)));
+      parts.push(lh, nameB, blob);
+      central.push(new Uint8Array([].concat(le32(0x02014b50), le16(20), le16(20), le16(0x0800), le16(0), le16(tm), le16(dt), le32(crc), le32(size), le32(size), le16(nameB.length), le16(0), le16(0), le16(0), le16(0), le32(0), le32(offset))), nameB);
+      offset += lh.length + nameB.length + size;
+    }
+    var cdSize = 0; central.forEach(function (p) { cdSize += p.length; });
+    var end = new Uint8Array([].concat(le32(0x06054b50), le16(0), le16(0), le16(list.length), le16(list.length), le32(cdSize), le32(offset), le16(0)));
+    return new Blob(parts.concat(central, [end]), { type: 'application/zip' });
+  }
+  $('zipBtn').addEventListener('click', async function () {
+    var list = items.filter(function (it) { return !!it.res; });
+    if (!list.length) return;
+    setStatus('Making the zip...', '', 0.5);
+    try { download(await makeZip(list), 'compressed_photos.zip'); setStatus('Download started. Look in Downloads in Safari.', 'ok'); }
+    catch (e) { setStatus('Could not make the zip: ' + e.message, 'err'); }
+  });
+
+  // ---------- viewer (press and hold the photo to save it)
+  function openView(i) {
+    var it = items[i]; if (!it || !it.res) return;
+    viewIdx = i;
+    if (viewUrl) URL.revokeObjectURL(viewUrl);
+    viewUrl = URL.createObjectURL(it.res.blob);
+    $('vimg').src = viewUrl;
+    $('vtitle').textContent = (i + 1) + ' / ' + items.length;
+    $('vinfo').textContent = it.res.name + '\n' + it.res.text;
+    $('vinfo').style.whiteSpace = 'pre-wrap';
+    $('vprev').disabled = nextDone(-1) < 0; $('vnext').disabled = nextDone(1) < 0;
+    $('view').classList.remove('hide'); $('view').scrollTop = 0;
+  }
+  function nextDone(d) { for (var j = viewIdx + d; j >= 0 && j < items.length; j += d) if (items[j].res) return j; return -1; }
+  function closeView() {
+    $('view').classList.add('hide'); $('vimg').src = '';
+    if (viewUrl) { URL.revokeObjectURL(viewUrl); viewUrl = null; }
+    viewIdx = -1;
+  }
+  $('vclose').addEventListener('click', closeView);
+  $('vback').addEventListener('click', closeView);
+  $('vprev').addEventListener('click', function () { var j = nextDone(-1); if (j >= 0) openView(j); });
+  $('vnext').addEventListener('click', function () { var j = nextDone(1); if (j >= 0) openView(j); });
+  $('vshare').addEventListener('click', function () { var it = items[viewIdx]; if (it && it.res) shareList([it], '1 photo'); });
+  $('vdl').addEventListener('click', function () {
+    var it = items[viewIdx]; if (!it || !it.res) return;
+    download(it.res.blob, it.res.name); setStatus('Download started. Look in Downloads in Safari.', 'ok');
+  });
+})();
+</script>
+</body>
+</html>
