@@ -578,6 +578,7 @@
     $('cw').value = it.w ? String(it.w) : '?'; $('ch').value = it.h ? String(it.h) : '?';
     $('ew').placeholder = 'W'; $('eh').placeholder = 'H';
     $('ew').value = it.ov.w; $('eh').value = it.ov.h; $('ek').value = it.ov.k;
+    if (it.w && it.ov.w === String(it.h) && it.ov.h === String(it.w) && it.w !== it.h) { $('cw').value = String(it.h); $('ch').value = String(it.w); }   // keep the flip showing
     $('vprev').disabled = i <= 0; $('vnext').disabled = i >= items.length - 1;
     $('vdl').classList.toggle('hide', !it.res); $('vhint').classList.toggle('hide', !it.res);
     setStatus('');
@@ -601,7 +602,11 @@
     });
   });
   $('cswap').addEventListener('click', function () {
-    var a = $('cw'), b = $('ch'), t = a.value; a.value = b.value; b.value = t;     // display only
+    var it = items[viewIdx]; if (!it || !it.w) return;
+    var a = $('cw'), b = $('ch'), t = a.value; a.value = b.value; b.value = t;
+    var flipped = a.value !== String(it.w);          // flipped: the new-size boxes get the swapped size; flipped back: they are cleared
+    $('ew').value = flipped ? a.value : ''; $('eh').value = flipped ? b.value : '';
+    $('ew').dispatchEvent(new Event('input')); $('eh').dispatchEvent(new Event('input'));
   });
   $('vswap').addEventListener('click', function () {
     var it = items[viewIdx]; if (!it) return;
