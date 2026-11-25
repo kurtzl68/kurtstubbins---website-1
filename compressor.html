@@ -51,7 +51,8 @@
   .rule { height: 1px; background: var(--border); margin: 14px 0; }
   #list { margin-top: 2px; }
   .row { display: flex; gap: 10px; align-items: center; background: var(--card); border: 1px solid var(--border); padding: 8px; margin-bottom: 6px; }
-  .row.done { cursor: pointer; }
+  .row { cursor: pointer; }
+  .row .tag { color: var(--warn); }
   .row .th { flex: none; width: 52px; height: 52px; background: var(--bg); border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; overflow: hidden; }
   .row .th img { max-width: 100%; max-height: 100%; display: block; }
   .row .meta { flex: 1; min-width: 0; }
@@ -124,11 +125,22 @@
       <button class="b" id="vprev">&lt; PREVIOUS</button>
       <button class="b" id="vnext">NEXT &gt;</button>
     </div>
-    <div class="imgcard"><img id="vimg" alt="Compressed photo"></div>
-    <div class="mono" id="vinfo" style="margin-top:8px"></div>
-    <div class="mono" style="margin-top:6px">Press and hold the photo to save it to Photos.</div>
-    <button class="b acc" id="vshare" style="margin-top:12px">SAVE VIA SHARE SHEET</button>
-    <button class="b gap6" id="vdl">DOWNLOAD TO FILES</button>
+    <div class="imgcard"><img id="vimg" alt="Photo"></div>
+    <div class="mono" id="vinfo" style="margin-top:8px;white-space:pre-wrap"></div>
+
+    <div class="lbl">PIXELS FOR THIS PHOTO <span>(blank = use main screen)</span></div>
+    <div class="grid">
+      <input class="field" id="ew" type="text" inputmode="numeric" autocomplete="off" placeholder="W" aria-label="Width in pixels for this photo">
+      <button class="b" id="vswap" type="button" aria-label="Swap width and height" style="flex:0 0 48px;width:48px;padding:0">&lt;&gt;</button>
+      <input class="field" id="eh" type="text" inputmode="numeric" autocomplete="off" placeholder="H" aria-label="Height in pixels for this photo">
+    </div>
+    <div class="lbl">TARGET SIZE FOR THIS PHOTO <span>(KB, blank = use main screen)</span></div>
+    <input class="field" id="ek" type="text" inputmode="decimal" autocomplete="off" placeholder="blank" aria-label="Target size in KB for this photo">
+
+    <button class="b acc" id="vsave" style="margin-top:14px">SAVE THIS PHOTO</button>
+    <div class="mono" id="vstatus" style="margin-top:8px;white-space:pre-wrap"></div>
+    <div class="mono hide" id="vhint" style="margin-top:6px">You can also press and hold the photo to save it to Photos.</div>
+    <button class="b gap6 hide" id="vdl">DOWNLOAD TO FILES</button>
     <button class="b gap6" id="vback">BACK TO LIST</button>
   </div>
 </div>
@@ -139,7 +151,7 @@
   var MAXA = 12500000;           // most pixels a phone can safely process (same cap as Image Corrector)
   var $ = function (id) { return document.getElementById(id); };
   var T = { dark: true };
-  var items = [];                // { file, key, thumb, res, fail }
+  var items = [];                // { file, key, thumb, res, fail, w, h, ov:{w,h,k}, resKey }
   var running = false, viewIdx = -1, viewUrl = null, skippedNote = '';
 
   // ---------- theme
@@ -150,6 +162,7 @@
   // ---------- small helpers
   function setStatus(msg, kind, prog) {
     var st = $('status'); st.textContent = msg || ''; st.className = kind || '';
+    var vs = $('vstatus'); if (vs) { vs.textContent = msg || ''; vs.style.color = kind === 'err' ? 'var(--err)' : kind === 'ok' ? 'var(--ok)' : kind === 'warn' ? 'var(--warn)' : ''; }
     var bar = $('bar');
     if (typeof prog === 'number') { bar.style.display = 'block'; bar.firstChild.style.width = Math.round(Math.max(0, Math.min(1, prog)) * 100) + '%'; }
     else { bar.style.display = 'none'; }
@@ -181,11 +194,11 @@
       if (!(isPng(f) || isJpeg(f))) { skipped++; continue; }
       var key = f.name + '|' + f.size + '|' + f.lastModified;
       if (items.some(function (it) { return it.key === key; })) { dup++; continue; }
-      items.push({ file: f, key: key, thumb: null, res: null, fail: '' });
+      items.push({ file: f, key: key, thumb: null, res: null, fail: '', w: undefined, h: undefined, bad: false, ov: { w: '', h: '', k: '' }, resKey: '' });
       added++;
     }
     skippedNote = skipped ? skipped + ' skipped (not JPG or PNG)' : '';
-    renderList();
+    renderList(); probeAll();
     var msg = items.length + ' photo' + (items.length === 1 ? '' : 's') + ' ready' + (added ? ' (+' + added + ' new)' : '');
     if (dup) msg += '  |  ' + dup + ' already in the list';
     if (skipped) msg += '  |  ' + skippedNote;
@@ -215,7 +228,7 @@
   function renderList() {
     var box = $('list'); box.innerHTML = '';
     items.forEach(function (it, i) {
-      var row = document.createElement('div'); row.className = 'row' + (it.res ? ' done' : '');
+      var row = document.createElement('div'); row.className = 'row';
       var th = document.createElement('div'); th.className = 'th';
       if (it.thumb) { var im = document.createElement('img'); im.src = it.thumb; im.alt = ''; th.appendChild(im); }
       var meta = document.createElement('div'); meta.className = 'meta';
@@ -223,13 +236,12 @@
       var st = document.createElement('div'); st.className = 'st';
       if (it.res) { st.textContent = it.res.text + '\n' + it.res.name; st.classList.add(it.res.kind); }
       else if (it.fail) { st.textContent = it.fail; st.classList.add('err'); }
-      else { st.textContent = fmtBytes(it.file.size) + '   waiting'; }
+      else { st.textContent = (it.w ? it.w + ' x ' + it.h + '   ' : '') + fmtBytes(it.file.size) + '   waiting'; }
+      if (it.ov && (it.ov.w || it.ov.h || it.ov.k)) { var tg = document.createElement('span'); tg.className = 'tag'; tg.textContent = '   OWN SETTINGS'; st.appendChild(tg); }
       meta.appendChild(nm); meta.appendChild(st);
       row.appendChild(th); row.appendChild(meta);
-      if (it.res) {
-        var go = document.createElement('div'); go.className = 'go'; go.textContent = 'VIEW'; row.appendChild(go);
-        row.addEventListener('click', function () { openView(i); });
-      }
+      var go = document.createElement('div'); go.className = 'go'; go.textContent = it.res ? 'VIEW' : 'EDIT'; row.appendChild(go);
+      row.addEventListener('click', function () { if (!running) openView(i); });
       box.appendChild(row);
     });
     $('filesLbl').textContent = items.length ? 'FILES (' + items.length + ')' : 'FILES';
@@ -237,6 +249,24 @@
     $('clearBtn').disabled = running || !items.length;
     var anyDone = items.some(function (it) { return !!it.res; });
     $('saveBox').classList.toggle('hide', !anyDone);
+  }
+
+  // ---------- read each photo's real size + thumbnail (one at a time, light on memory)
+  var probing = false;
+  async function probeAll() {
+    if (probing) return; probing = true;
+    for (;;) {
+      var it = items.find(function (x) { return x.w === undefined && !x.bad; });
+      if (!it) break;
+      try {
+        var li = await loadImage(it.file);
+        it.w = li.w; it.h = li.h;
+        try { it.thumb = makeThumb(li.img, li.w, li.h); } catch (e) {}
+        release(li);
+      } catch (e) { it.bad = true; it.w = 0; it.h = 0; }
+      renderList();
+    }
+    probing = false;
   }
 
   // ---------- image loading and drawing
@@ -410,16 +440,24 @@
     if (v < 1 || v > 20000) throw new Error(label + ' must be between 1 and 20000.');
     return v;
   }
+  function parseKb(txt) {
+    var t = txt.trim().replace(',', '.');
+    if (t === '') return null;
+    if (!/^\d*\.?\d+$/.test(t) || !(parseFloat(t) > 0)) throw new Error('Target size must be a number in KB (or blank).');
+    return parseFloat(t);
+  }
+  // this photo's own boxes win; blank boxes fall back to the main screen
+  function effective(it) {
+    var W = parsePx(it.ov.w, 'Width'), H = parsePx(it.ov.h, 'Height'), K = parseKb(it.ov.k);
+    if (W === null) W = parsePx($('pw').value, 'Width');
+    if (H === null) H = parsePx($('ph').value, 'Height');
+    if (K === null) K = parseKb($('tgt').value);
+    return { W: W, H: H, kb: K, sig: W + '|' + H + '|' + K };
+  }
   $('runBtn').addEventListener('click', async function () {
     if (running || !items.length) return;
-    var tt = $('tgt').value.trim().replace(',', '.'), targetKb = null, W, H;
-    try {
-      if (tt !== '') {
-        targetKb = parseFloat(tt);
-        if (!(targetKb > 0) || !isFinite(targetKb) || !/^\d*\.?\d+$/.test(tt)) throw new Error('Target size must be a number in KB (or blank).');
-      }
-      W = parsePx($('pw').value, 'Width'); H = parsePx($('ph').value, 'Height');
-    } catch (e) { setStatus(e.message, 'err'); return; }
+    try { parseKb($('tgt').value); parsePx($('pw').value, 'Width'); parsePx($('ph').value, 'Height'); }
+    catch (e) { setStatus(e.message, 'err'); return; }
 
     running = true;
     items.forEach(function (it) { it.res = null; it.fail = ''; });
@@ -430,7 +468,8 @@
       setStatus('Processing ' + (i + 1) + ' of ' + items.length + '...', '', i / items.length);
       await new Promise(function (r) { setTimeout(r, 30); });
       try {
-        it.res = await processOne(it, W, H, targetKb);
+        var ef = effective(it);
+        it.res = await processOne(it, ef.W, ef.H, ef.kb); it.resKey = ef.sig;
         if (it.res.status === 'over') overN++; else if (it.res.status === 'kept' || it.res.status === 'copied') keptN++; else okN++;
         if (isJpeg(it.file) && it.res.fmt === 'JPG' && it.res.status !== 'kept' && it.res.status !== 'copied') { if (it.res.exif) exN++; else noExN++; }
       } catch (e) { it.fail = 'FAILED  ' + (e && e.message ? e.message : 'unknown error'); failN++; }
@@ -469,7 +508,10 @@
     try { files = list.map(fileOf); } catch (e) { setStatus('Sharing is not supported here. Use the download button.', 'err'); return; }
     if (!(navigator.canShare && navigator.canShare({ files: files }))) { setStatus('Sharing is not supported here. Use the download button.', 'err'); return; }
     navigator.share({ files: files }).then(function () { setStatus('Shared ' + label + '. Choose Save Image in the sheet to put it in Photos.', 'ok'); })
-      .catch(function (e) { if (e && e.name !== 'AbortError') setStatus('Share failed: ' + e.message, 'err'); });
+      .catch(function (e) {
+        if (e && e.name === 'NotAllowedError') { setStatus('Photo is ready. Tap SHARE SAVED PHOTO to open the share sheet.', 'warn'); refreshSave(); }
+        else if (e && e.name !== 'AbortError') setStatus('Share failed: ' + e.message, 'err');
+      });
   }
   function download(blob, name) {
     var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name;
@@ -510,30 +552,74 @@
     catch (e) { setStatus('Could not make the zip: ' + e.message, 'err'); }
   });
 
-  // ---------- viewer (press and hold the photo to save it)
+  // ---------- photo window (opens for any photo; shows the saved result once there is one)
+  function curSig(it) { try { return effective(it).sig; } catch (e) { return ''; } }
+  function refreshSave() {
+    var it = items[viewIdx]; if (!it) return;
+    var ready = !!(it.res && it.resKey && it.resKey === curSig(it));
+    $('vsave').textContent = ready ? 'SHARE SAVED PHOTO' : 'SAVE THIS PHOTO';
+  }
   function openView(i) {
-    var it = items[i]; if (!it || !it.res) return;
+    var it = items[i]; if (!it) return;
     viewIdx = i;
     if (viewUrl) URL.revokeObjectURL(viewUrl);
-    viewUrl = URL.createObjectURL(it.res.blob);
+    viewUrl = URL.createObjectURL(it.res ? it.res.blob : it.file);
     $('vimg').src = viewUrl;
     $('vtitle').textContent = (i + 1) + ' / ' + items.length;
-    $('vinfo').textContent = it.res.name + '\n' + it.res.text;
-    $('vinfo').style.whiteSpace = 'pre-wrap';
-    $('vprev').disabled = nextDone(-1) < 0; $('vnext').disabled = nextDone(1) < 0;
+    var info = it.file.name + '\nCurrent: ' + (it.w ? it.w + ' x ' + it.h + ' px' : 'unknown size') + '   ' + fmtBytes(it.file.size);
+    if (it.res) info += '\nSaved as: ' + it.res.name + '\n' + it.res.text;
+    $('vinfo').textContent = info;
+    $('ew').placeholder = it.w ? String(it.w) : 'W'; $('eh').placeholder = it.h ? String(it.h) : 'H';
+    $('ew').value = it.ov.w; $('eh').value = it.ov.h; $('ek').value = it.ov.k;
+    $('vprev').disabled = i <= 0; $('vnext').disabled = i >= items.length - 1;
+    $('vdl').classList.toggle('hide', !it.res); $('vhint').classList.toggle('hide', !it.res);
+    setStatus('');
+    refreshSave();
     $('view').classList.remove('hide'); $('view').scrollTop = 0;
   }
-  function nextDone(d) { for (var j = viewIdx + d; j >= 0 && j < items.length; j += d) if (items[j].res) return j; return -1; }
   function closeView() {
     $('view').classList.add('hide'); $('vimg').src = '';
     if (viewUrl) { URL.revokeObjectURL(viewUrl); viewUrl = null; }
-    viewIdx = -1;
+    viewIdx = -1; renderList();
   }
   $('vclose').addEventListener('click', closeView);
   $('vback').addEventListener('click', closeView);
-  $('vprev').addEventListener('click', function () { var j = nextDone(-1); if (j >= 0) openView(j); });
-  $('vnext').addEventListener('click', function () { var j = nextDone(1); if (j >= 0) openView(j); });
-  $('vshare').addEventListener('click', function () { var it = items[viewIdx]; if (it && it.res) shareList([it], '1 photo'); });
+  $('vprev').addEventListener('click', function () { if (viewIdx > 0 && !running) openView(viewIdx - 1); });
+  $('vnext').addEventListener('click', function () { if (viewIdx < items.length - 1 && !running) openView(viewIdx + 1); });
+  ['ew', 'eh', 'ek'].forEach(function (id) {
+    $(id).addEventListener('input', function () {
+      var it = items[viewIdx]; if (!it) return;
+      it.ov.w = $('ew').value.trim(); it.ov.h = $('eh').value.trim(); it.ov.k = $('ek').value.trim();
+      refreshSave();
+    });
+  });
+  $('vswap').addEventListener('click', function () {
+    var it = items[viewIdx]; if (!it) return;
+    var w = $('ew'), h = $('eh'), t = w.value;
+    if (w.value === '' && h.value === '' && it.w) { w.value = String(it.h); h.value = String(it.w); }   // nothing typed: flip the current size
+    else { w.value = h.value; h.value = t; }
+    w.dispatchEvent(new Event('input')); h.dispatchEvent(new Event('input'));
+  });
+  $('vsave').addEventListener('click', async function () {
+    if (running) return;
+    var it = items[viewIdx]; if (!it) return;
+    var ef;
+    try { ef = effective(it); } catch (e) { setStatus(e.message, 'err'); return; }
+    if (it.res && it.resKey === ef.sig) { shareList([it], '1 photo'); return; }
+    running = true; $('vsave').disabled = true;
+    setStatus('Working...', '', 0.5);
+    try {
+      it.res = await processOne(it, ef.W, ef.H, ef.kb); it.resKey = ef.sig; it.fail = '';
+    } catch (e) {
+      running = false; $('vsave').disabled = false;
+      setStatus('FAILED  ' + (e && e.message ? e.message : 'unknown error'), 'err'); return;
+    }
+    running = false; $('vsave').disabled = false;
+    var idx = viewIdx;
+    renderList(); openView(idx);
+    setStatus(it.res.text, it.res.kind);
+    shareList([it], '1 photo');
+  });
   $('vdl').addEventListener('click', function () {
     var it = items[viewIdx]; if (!it || !it.res) return;
     download(it.res.blob, it.res.name); setStatus('Download started. Look in Downloads in Safari.', 'ok');
