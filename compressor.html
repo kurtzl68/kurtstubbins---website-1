@@ -125,7 +125,7 @@
       <button class="b" id="vprev">&lt; PREVIOUS</button>
       <button class="b" id="vnext">NEXT &gt;</button>
     </div>
-    <div class="imgcard"><img id="vimg" alt="Photo"></div>
+    <div class="imgcard" id="vwrap" style="position:relative"><img id="vimg" alt="Photo"></div>
     <div class="mono" id="vinfo" style="margin-top:8px;white-space:pre-wrap"></div>
 
     <div class="lbl">CURRENT SIZE <span>(pixels)</span></div>
@@ -143,9 +143,12 @@
     <div class="lbl">TARGET SIZE FOR THIS PHOTO <span>(KB, blank = use main screen)</span></div>
     <input class="field" id="ek" type="text" inputmode="decimal" autocomplete="off" placeholder="blank" aria-label="Target size in KB for this photo">
 
+    <div class="lbl">TURN THIS PHOTO <span>(applies before the size)</span></div>
+    <div class="grid"><button class="b" id="rotL" type="button">90&deg; &#8634;</button><button class="b" id="rotR" type="button">90&deg; &#8635;</button></div>
+
     <button class="b acc" id="vsave" style="margin-top:14px">SAVE THIS PHOTO</button>
     <div class="mono" id="vstatus" style="margin-top:8px;white-space:pre-wrap"></div>
-    <div class="mono hide" id="vhint" style="margin-top:6px">You can also press and hold the photo to save it to Photos.</div>
+    <div class="mono" id="vhint" style="margin-top:6px"></div>
     <button class="b gap6 hide" id="vdl">DOWNLOAD TO FILES</button>
     <button class="b gap6" id="vback">BACK TO LIST</button>
   </div>
@@ -158,7 +161,7 @@
   var $ = function (id) { return document.getElementById(id); };
   var T = { dark: true };
   var items = [];                // { file, key, thumb, res, fail, w, h, ov:{w,h,k}, resKey }
-  var running = false, viewIdx = -1, viewUrl = null, skippedNote = '';
+  var running = false, viewIdx = -1, viewUrl = null, viewRes = false, skippedNote = '';
 
   // ---------- theme
   function applyTheme() { document.body.setAttribute('data-theme', T.dark ? 'dark' : 'light'); }
@@ -200,7 +203,7 @@
       if (!(isPng(f) || isJpeg(f))) { skipped++; continue; }
       var key = f.name + '|' + f.size + '|' + f.lastModified;
       if (items.some(function (it) { return it.key === key; })) { dup++; continue; }
-      items.push({ file: f, key: key, thumb: null, res: null, fail: '', w: undefined, h: undefined, bad: false, ov: { w: '', h: '', k: '' }, resKey: '' });
+      items.push({ file: f, key: key, thumb: null, res: null, fail: '', w: undefined, h: undefined, bad: false, rot: 0, ov: { w: '', h: '', k: '' }, resKey: '' });
       added++;
     }
     skippedNote = skipped ? skipped + ' skipped (not JPG or PNG)' : '';
@@ -243,7 +246,7 @@
       if (it.res) { st.textContent = it.res.text + '\n' + it.res.name; st.classList.add(it.res.kind); }
       else if (it.fail) { st.textContent = it.fail; st.classList.add('err'); }
       else { st.textContent = (it.w ? it.w + ' x ' + it.h + '   ' : '') + fmtBytes(it.file.size) + '   waiting'; }
-      if (it.ov && (it.ov.w || it.ov.h || it.ov.k)) { var tg = document.createElement('span'); tg.className = 'tag'; tg.textContent = '   OWN SETTINGS'; st.appendChild(tg); }
+      if (it.rot || (it.ov && (it.ov.w || it.ov.h || it.ov.k))) { var tg = document.createElement('span'); tg.className = 'tag'; tg.textContent = '   OWN SETTINGS'; st.appendChild(tg); }
       meta.appendChild(nm); meta.appendChild(st);
       row.appendChild(th); row.appendChild(meta);
       var go = document.createElement('div'); go.className = 'go'; go.textContent = it.res ? 'VIEW' : 'EDIT'; row.appendChild(go);
@@ -380,6 +383,18 @@
   }
 
   // ---------- one photo
+  // Scales first (in the photo's own direction), then turns by 90/180/270 degrees clockwise. Nothing is stretched.
+  function renderRot(li, rot, nw, nh, black) {
+    if (!rot) return drawScaled(li.img, li.w, li.h, nw, nh, black);
+    var odd = rot % 180 !== 0, pw = odd ? nh : nw, ph = odd ? nw : nh;
+    var pre = drawScaled(li.img, li.w, li.h, pw, ph, false);
+    var c = document.createElement('canvas'); c.width = nw; c.height = nh;
+    var x = c.getContext('2d');
+    if (black) { x.fillStyle = '#000'; x.fillRect(0, 0, nw, nh); }
+    x.translate(nw / 2, nh / 2); x.rotate(rot * Math.PI / 180); x.drawImage(pre, -pw / 2, -ph / 2);
+    pre.width = 0;
+    return c;
+  }
   function done(blob, name, status, fmt, w, h, orig, exif) {
     var text;
     if (status === 'kept') text = fmt + '  unchanged (' + w + 'x' + h + ')';
@@ -393,15 +408,16 @@
     var f = it.file, png = isPng(f), resizing = !!(W || H), stem = stemOf(f);
     var li = await loadImage(f);
     try {
-      var w = li.w, h = li.h;
-      try { it.thumb = makeThumb(li.img, w, h); } catch (e) { it.thumb = null; }
+      var rot = it.rot || 0, odd = rot % 180 !== 0;
+      var w = odd ? li.h : li.w, h = odd ? li.w : li.h;           // size after turning
+      try { it.thumb = makeThumb(li.img, li.w, li.h); } catch (e) { it.thumb = null; }
       var sz = targetSize(w, h, W, H), nw = sz[0], nh = sz[1], c, blob;
 
       if (targetKb === null) {
         // nothing to change (no pixel size given, or it equals the current size): pass the original through untouched
-        if (!resizing || (nw === w && nh === h)) return done(f, stem + (png ? '.png' : '.jpg'), 'kept', png ? 'PNG' : 'JPG', w, h, f.size, false);
+        if (rot === 0 && (!resizing || (nw === w && nh === h))) return done(f, stem + (png ? '.png' : '.jpg'), 'kept', png ? 'PNG' : 'JPG', w, h, f.size, false);
         if (nw * nh > MAXA) throw new Error('TOO LARGE for this phone (' + nw + 'x' + nh + '). Set W or H smaller.');
-        c = drawScaled(li.img, w, h, nw, nh, false);
+        c = renderRot(li, rot, nw, nh, false);
         if (png) {
           blob = await toBlob(c, 'image/png');
           c.width = 0;
@@ -417,10 +433,10 @@
       }
 
       var tb = targetKb * 1024;
-      if (!png && !resizing && f.size <= tb) return done(f, stem + '.jpg', 'copied', 'JPG', w, h, f.size, false);
+      if (rot === 0 && !png && !resizing && f.size <= tb) return done(f, stem + '.jpg', 'copied', 'JPG', w, h, f.size, false);
       if (nw * nh > MAXA) throw new Error('TOO LARGE for this phone (' + nw + 'x' + nh + '). Set W or H smaller.');
       var seg = png ? null : await readExifSeg(f), extra = seg ? seg.length : 0;
-      c = drawScaled(li.img, w, h, nw, nh, true);        // PNG transparency becomes black
+      c = renderRot(li, rot, nw, nh, true);        // PNG transparency becomes black
       var lo = 1, hi = 95, best = null;
       while (lo <= hi) {
         var mid = (lo + hi) >> 1, bb = await toBlob(c, 'image/jpeg', mid / 100);
@@ -458,7 +474,7 @@
     if (W === null) W = parsePx($('pw').value, 'Width');
     if (H === null) H = parsePx($('ph').value, 'Height');
     if (K === null) K = parseKb($('tgt').value);
-    return { W: W, H: H, kb: K, sig: W + '|' + H + '|' + K };
+    return { W: W, H: H, kb: K, sig: W + '|' + H + '|' + K + '|' + (it.rot || 0) };
   }
   $('runBtn').addEventListener('click', async function () {
     if (running || !items.length) return;
@@ -560,30 +576,63 @@
 
   // ---------- photo window (opens for any photo; shows the saved result once there is one)
   function curSig(it) { try { return effective(it).sig; } catch (e) { return ''; } }
+  function dispW(it) { return (it.rot || 0) % 180 ? it.h : it.w; }
+  function dispH(it) { return (it.rot || 0) % 180 ? it.w : it.h; }
+  function setInfo(it) {
+    var info = it.file.name + '\nCurrent: ' + (it.w ? dispW(it) + ' x ' + dispH(it) + ' px' : 'unknown size') + (it.rot ? ' (turned ' + it.rot + ' deg)' : '') + '   ' + fmtBytes(it.file.size);
+    if (it.res && viewRes) info += '\nSaved as: ' + it.res.name + '\n' + it.res.text;
+    $('vinfo').textContent = info;
+  }
   function refreshSave() {
     var it = items[viewIdx]; if (!it) return;
     var ready = !!(it.res && it.resKey && it.resKey === curSig(it));
     $('vsave').textContent = ready ? 'SHARE SAVED PHOTO' : 'SAVE THIS PHOTO';
+    $('vhint').textContent = (ready && viewRes) ? 'Press and hold the photo to save it to Photos. This is the saved version.'
+      : 'Press and hold only saves the photo shown here, not your changes. Tap SAVE THIS PHOTO first.';
+    $('vdl').classList.toggle('hide', !ready);
   }
+  // shows the original (turned on screen) before saving, or the saved result after
+  function layoutPrev() {
+    var it = items[viewIdx], im = $('vimg'), wrap = $('vwrap');
+    if (!it || viewRes || !it.w) { im.style.cssText = ''; wrap.style.height = ''; return; }
+    var rw = dispW(it), rh = dispH(it);
+    var s = Math.min((wrap.clientWidth - 20) / rw, (window.innerHeight * 0.6) / rh, 1);
+    wrap.style.height = Math.round(rh * s + 20) + 'px';
+    im.style.cssText = 'position:absolute;left:50%;top:50%;max-width:none;max-height:none;width:' + (it.w * s) + 'px;height:' + (it.h * s) +
+      'px;transform:translate(-50%,-50%) rotate(' + (it.rot || 0) + 'deg)';
+  }
+  function showOriginal(it) {
+    if (viewUrl) URL.revokeObjectURL(viewUrl);
+    viewUrl = URL.createObjectURL(it.file); viewRes = false; $('vimg').src = viewUrl;
+  }
+  function turn(d) {
+    var it = items[viewIdx]; if (!it || !it.w || running) return;
+    it.rot = (((it.rot || 0) + d) % 360 + 360) % 360;
+    it.ov.w = ''; it.ov.h = ''; $('ew').value = ''; $('eh').value = '';           // sizes typed before the turn no longer apply
+    $('cw').value = String(dispW(it)); $('ch').value = String(dispH(it));
+    if (viewRes) showOriginal(it);
+    setInfo(it); layoutPrev(); refreshSave(); renderList();
+  }
+  $('rotL').addEventListener('click', function () { turn(-90); });
+  $('rotR').addEventListener('click', function () { turn(90); });
   function openView(i) {
     var it = items[i]; if (!it) return;
     viewIdx = i;
     if (viewUrl) URL.revokeObjectURL(viewUrl);
+    viewRes = !!it.res;
     viewUrl = URL.createObjectURL(it.res ? it.res.blob : it.file);
     $('vimg').src = viewUrl;
     $('vtitle').textContent = (i + 1) + ' / ' + items.length;
-    var info = it.file.name + '\nCurrent: ' + (it.w ? it.w + ' x ' + it.h + ' px' : 'unknown size') + '   ' + fmtBytes(it.file.size);
-    if (it.res) info += '\nSaved as: ' + it.res.name + '\n' + it.res.text;
-    $('vinfo').textContent = info;
-    $('cw').value = it.w ? String(it.w) : '?'; $('ch').value = it.h ? String(it.h) : '?';
+    setInfo(it);
+    $('cw').value = it.w ? String(dispW(it)) : '?'; $('ch').value = it.h ? String(dispH(it)) : '?';
     $('ew').placeholder = 'W'; $('eh').placeholder = 'H';
     $('ew').value = it.ov.w; $('eh').value = it.ov.h; $('ek').value = it.ov.k;
-    if (it.w && it.ov.w === String(it.h) && it.ov.h === String(it.w) && it.w !== it.h) { $('cw').value = String(it.h); $('ch').value = String(it.w); }   // keep the flip showing
+    if (it.w && it.ov.w === String(dispH(it)) && it.ov.h === String(dispW(it)) && it.w !== it.h) { $('cw').value = String(dispH(it)); $('ch').value = String(dispW(it)); }   // keep the flip showing
     $('vprev').disabled = i <= 0; $('vnext').disabled = i >= items.length - 1;
-    $('vdl').classList.toggle('hide', !it.res); $('vhint').classList.toggle('hide', !it.res);
     setStatus('');
     refreshSave();
     $('view').classList.remove('hide'); $('view').scrollTop = 0;
+    layoutPrev();
   }
   function closeView() {
     $('view').classList.add('hide'); $('vimg').src = '';
@@ -604,14 +653,14 @@
   $('cswap').addEventListener('click', function () {
     var it = items[viewIdx]; if (!it || !it.w) return;
     var a = $('cw'), b = $('ch'), t = a.value; a.value = b.value; b.value = t;
-    var flipped = a.value !== String(it.w);          // flipped: the new-size boxes get the swapped size; flipped back: they are cleared
+    var flipped = a.value !== String(dispW(it));          // flipped: the new-size boxes get the swapped size; flipped back: they are cleared
     $('ew').value = flipped ? a.value : ''; $('eh').value = flipped ? b.value : '';
     $('ew').dispatchEvent(new Event('input')); $('eh').dispatchEvent(new Event('input'));
   });
   $('vswap').addEventListener('click', function () {
     var it = items[viewIdx]; if (!it) return;
     var w = $('ew'), h = $('eh'), t = w.value;
-    if (w.value === '' && h.value === '' && it.w) { w.value = String(it.h); h.value = String(it.w); }   // flipped true size, not the on-screen swap   // nothing typed: flip the current size
+    if (w.value === '' && h.value === '' && it.w) { w.value = String(dispH(it)); h.value = String(dispW(it)); }   // flipped true size, not the on-screen swap   // nothing typed: flip the current size
     else { w.value = h.value; h.value = t; }
     w.dispatchEvent(new Event('input')); h.dispatchEvent(new Event('input'));
   });
