@@ -128,7 +128,13 @@
     <div class="imgcard"><img id="vimg" alt="Photo"></div>
     <div class="mono" id="vinfo" style="margin-top:8px;white-space:pre-wrap"></div>
 
-    <div class="lbl">PIXELS FOR THIS PHOTO <span>(blank = use main screen)</span></div>
+    <div class="lbl">CURRENT SIZE <span>(pixels)</span></div>
+    <div class="grid">
+      <input class="field" id="cw" type="text" readonly tabindex="-1" aria-label="Current width in pixels">
+      <button class="b" id="cswap" type="button" aria-label="Swap current width and height" style="flex:0 0 48px;width:48px;padding:0">&lt;&gt;</button>
+      <input class="field" id="ch" type="text" readonly tabindex="-1" aria-label="Current height in pixels">
+    </div>
+    <div class="lbl">NEW SIZE FOR THIS PHOTO <span>(blank = use main screen)</span></div>
     <div class="grid">
       <input class="field" id="ew" type="text" inputmode="numeric" autocomplete="off" placeholder="W" aria-label="Width in pixels for this photo">
       <button class="b" id="vswap" type="button" aria-label="Swap width and height" style="flex:0 0 48px;width:48px;padding:0">&lt;&gt;</button>
@@ -569,7 +575,8 @@
     var info = it.file.name + '\nCurrent: ' + (it.w ? it.w + ' x ' + it.h + ' px' : 'unknown size') + '   ' + fmtBytes(it.file.size);
     if (it.res) info += '\nSaved as: ' + it.res.name + '\n' + it.res.text;
     $('vinfo').textContent = info;
-    $('ew').placeholder = it.w ? String(it.w) : 'W'; $('eh').placeholder = it.h ? String(it.h) : 'H';
+    $('cw').value = it.w ? String(it.w) : '?'; $('ch').value = it.h ? String(it.h) : '?';
+    $('ew').placeholder = 'W'; $('eh').placeholder = 'H';
     $('ew').value = it.ov.w; $('eh').value = it.ov.h; $('ek').value = it.ov.k;
     $('vprev').disabled = i <= 0; $('vnext').disabled = i >= items.length - 1;
     $('vdl').classList.toggle('hide', !it.res); $('vhint').classList.toggle('hide', !it.res);
@@ -593,10 +600,13 @@
       refreshSave();
     });
   });
+  $('cswap').addEventListener('click', function () {
+    var a = $('cw'), b = $('ch'), t = a.value; a.value = b.value; b.value = t;     // display only
+  });
   $('vswap').addEventListener('click', function () {
     var it = items[viewIdx]; if (!it) return;
     var w = $('ew'), h = $('eh'), t = w.value;
-    if (w.value === '' && h.value === '' && it.w) { w.value = String(it.h); h.value = String(it.w); }   // nothing typed: flip the current size
+    if (w.value === '' && h.value === '' && it.w) { w.value = String(it.h); h.value = String(it.w); }   // flipped true size, not the on-screen swap   // nothing typed: flip the current size
     else { w.value = h.value; h.value = t; }
     w.dispatchEvent(new Event('input')); h.dispatchEvent(new Event('input'));
   });
