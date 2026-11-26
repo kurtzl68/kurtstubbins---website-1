@@ -99,7 +99,8 @@
     padding: 10px 10px calc(env(safe-area-inset-bottom) + 22px); max-height: 75vh; overflow-y: auto; }
   #sheetList .it { display: flex; justify-content: space-between; align-items: center; width: 100%; height: 38px; margin-bottom: 4px; padding: 0 12px; background: var(--btn); color: var(--text);
     border: 1px solid var(--border); border-radius: 0; font: 700 10.5px Helvetica, Arial, sans-serif; letter-spacing: .05em; text-align: left; -webkit-appearance: none; appearance: none; }
-  #sheetList .it span { font: 10px "Courier New", monospace; color: var(--label); font-weight: 400; letter-spacing: 0; }
+  #sheetList .it div { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #sheetList .it span { max-width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-left: 8px; font: 10px "Courier New", monospace; color: var(--label); font-weight: 400; letter-spacing: 0; }
   #sheetList .it.acc { background: var(--accbg); color: var(--accfg); border-color: var(--accbg); }
   #sheetList .it.acc span { color: var(--accfg); }
   #sheetList .it.act { color: var(--handle); }
@@ -312,7 +313,7 @@
         S.quad0 = [{ x: cw * m, y: ch * m }, { x: cw * (1 - m), y: ch * m }, { x: cw * (1 - m), y: ch * (1 - m) }, { x: cw * m, y: ch * (1 - m) }];
         S.quad = S.quad0.map(function (p) { return { x: p.x, y: p.y }; });
         S.sel = { t: 'c', i: 0 }; S.prev = false; S.prevCanvas = null; S.drag = null; S.loupe = false; S.blob = null;
-        S.exif = null; S.exifState = '';
+        S.exif = null; S.exifState = ''; S.lens = '';
         zeroAdj(); S.tool = 'exposure'; S.tuneBase = null; S.from = 'sCorners'; S.rot = 0; S.outCanvas = null;
         if (it && !it.thumb) { try { it.thumb = thumbOf(c); } catch (e2) {} }
         if (it && it.st) {
@@ -341,6 +342,26 @@
   }
 
   // ---------- EXIF (best effort, JPEG only)
+  function lensOf(seg) {
+    // LensModel (0xA434) from the Exif sub-IFD, as text
+    try {
+      var t = 10, le = seg[t] === 0x49;
+      var r16 = function (o) { return le ? (seg[o] | (seg[o + 1] << 8)) : ((seg[o] << 8) | seg[o + 1]); };
+      var r32 = function (o) { return (le ? (seg[o] | (seg[o + 1] << 8) | (seg[o + 2] << 16) | (seg[o + 3] << 24)) : ((seg[o] << 24) | (seg[o + 1] << 16) | (seg[o + 2] << 8) | seg[o + 3])) >>> 0; };
+      function find(ifd, tag) {
+        var n = r16(ifd), i;
+        for (i = 0; i < n; i++) { var e = ifd + 2 + i * 12; if (r16(e) === tag) return e; }
+        return -1;
+      }
+      var ifd0 = t + r32(t + 4), ep = find(ifd0, 0x8769);
+      if (ep < 0) return '';
+      var ifd1 = t + r32(ep + 8), le2 = find(ifd1, 0xA434);
+      if (le2 < 0) return '';
+      var cnt = r32(le2 + 4), off = cnt > 4 ? t + r32(le2 + 8) : le2 + 8, str = '';
+      for (var k = 0; k < cnt && seg[off + k]; k++) str += String.fromCharCode(seg[off + k]);
+      return str.replace(/^\s+|\s+$/g, '');
+    } catch (e) { return ''; }
+  }
   function readExif(f) {
     try {
       var fr = new FileReader();
@@ -354,8 +375,9 @@
             var mk = b[p + 1], len = (b[p + 2] << 8) | b[p + 3];
             if (mk === 0xE1 && b[p + 4] === 0x45 && b[p + 5] === 0x78 && b[p + 6] === 0x69 && b[p + 7] === 0x66) {
               var seg = b.slice(p, p + 2 + len);
+              S.lens = lensOf(seg);
               setOrientationOne(seg);
-              S.exif = seg; S.exifState = 'copied'; return;
+              S.exif = seg; S.exifState = 'copied'; lensAuto(f); return;
             }
             p += 2 + len;
           }
@@ -425,9 +447,27 @@
     if (k > 1) k = 1;
     return { w: Math.max(8, Math.round(fw * k)), h: Math.max(8, Math.round(fh * k)) };
   }
-  function warpAsync(srcData, quad, ow, oh, prog, token, rot) {
+  // lens distortion: ideal (straight) point P -> photo point D = C + (P-C)(1 - b r^2), r = |P-C| / R. b > 0 straightens edges that bow outward.
+  function distOf(w, h) {
+    var b = (S.adj.distortion || 0) / 100 * 0.12;
+    return b ? { b: b, cx: (w - 1) / 2, cy: (h - 1) / 2, R: Math.sqrt(w * w + h * h) / 2 } : null;
+  }
+  function idealQuad(q, d) {
+    if (!d) return q;
+    var rmax = d.b > 0 ? 1 / Math.sqrt(3 * d.b) : 1e9;
+    return q.map(function (pt) {
+      var ex = pt.x - d.cx, ey = pt.y - d.cy, rd = Math.sqrt(ex * ex + ey * ey) / d.R;
+      if (rd < 1e-9) return { x: pt.x, y: pt.y };
+      var lo = 0, hi = d.b > 0 ? rmax : Math.max(rd, 1e-6), i;
+      if (d.b < 0) { hi = rd; }
+      for (i = 0; i < 50; i++) { var m = (lo + hi) / 2; if (m * (1 - d.b * m * m) < rd) lo = m; else hi = m; }
+      var rp = (lo + hi) / 2, k = rp / rd;
+      return { x: d.cx + ex * k, y: d.cy + ey * k };
+    });
+  }
+  function warpAsync(srcData, quad, ow, oh, prog, token, rot, dst0) {
     var sw = srcData.width, sh = srcData.height, sd = srcData.data;
-    var fw = rot ? rot.fw : ow, fh = rot ? rot.fh : oh, ca = rot ? Math.cos(rot.a) : 1, sa = rot ? Math.sin(rot.a) : 0;
+    var dd = dst0 || null, fw = rot ? rot.fw : ow, fh = rot ? rot.fh : oh, ca = rot ? Math.cos(rot.a) : 1, sa = rot ? Math.sin(rot.a) : 0;
     var cxo = (ow - 1) / 2, cyo = (oh - 1) / 2, cxf = (fw - 1) / 2, cyf = (fh - 1) / 2;
     var dst = [{ x: 0, y: 0 }, { x: fw - 1, y: 0 }, { x: fw - 1, y: fh - 1 }, { x: 0, y: fh - 1 }];
     var h = homography(dst, quad);
@@ -443,6 +483,7 @@
             if (rot) { var du = u - cxo, dv = v - cyo; xf = cxf + ca * du + sa * dv; yf = cyf - sa * du + ca * dv; }
             var d = h[6] * xf + h[7] * yf + 1;
             var X = (h[0] * xf + h[1] * yf + h[2]) / d, Y = (h[3] * xf + h[4] * yf + h[5]) / d;
+            if (dd) { var ex = X - dd.cx, ey = Y - dd.cy, ff = 1 - dd.b * (ex * ex + ey * ey) / (dd.R * dd.R); X = dd.cx + ex * ff; Y = dd.cy + ey * ff; }
             if (X < 0) X = 0; else if (X > sw - 1) X = sw - 1;
             if (Y < 0) Y = 0; else if (Y > sh - 1) Y = sh - 1;
             var x0 = X | 0, y0 = Y | 0, x1 = x0 + 1 < sw ? x0 + 1 : x0, y1 = y0 + 1 < sh ? y0 + 1 : y0;
@@ -721,10 +762,11 @@
   function schedulePreview() { clearTimeout(S.prevTimer); S.prevTimer = setTimeout(buildPreview, 90); }
   function buildPreview() {
     if (!S.prev) return;
-    var q = S.quad.map(function (p) { return { x: p.x * S.pscale, y: p.y * S.pscale }; });
+    var dd = distOf(S.proxyData.width, S.proxyData.height);
+    var q = idealQuad(S.quad.map(function (p) { return { x: p.x * S.pscale, y: p.y * S.pscale }; }), dd);
     var o = outSize(q, 700);
     var tk = ++S.token;
-    warpAsync(S.proxyData, q, o.w, o.h, null, tk).then(function (img) {
+    warpAsync(S.proxyData, q, o.w, o.h, null, tk, null, dd).then(function (img) {
       var c = document.createElement('canvas'); c.width = o.w; c.height = o.h; c.getContext('2d').putImageData(img, 0, 0);
       S.prevCanvas = c; redraw();
     }).catch(function () {});
@@ -741,6 +783,7 @@
     { k: 'saturation', n: 'SATURATION', min: -100, max: 100, st: 1, note: 'Colour strength.' },
     { k: 'sharpness', n: 'SHARPNESS', min: 0, max: 100, st: 1, note: 'Applied to the full photo on save. Preview is approximate.' },
     { k: 'noise', n: 'NOISE', min: 0, max: 100, st: 1, note: 'Smooths grain. Applied to the full photo on save. Preview is approximate.' },
+    { k: 'distortion', n: 'DISTORTION', min: -100, max: 100, st: 1, note: 'Right fixes edges that bow out, left those that bow in. Match the guide lines.' },
     { k: 'straighten', n: 'STRAIGHTEN', min: -10, max: 10, st: 0.1, note: 'Turns the photo up to 10 degrees. Edges are trimmed so no blank corners show.' }
   ];
   function toolOf(k) { for (var i = 0; i < TOOLS.length; i++) if (TOOLS[i].k === k) return TOOLS[i]; return TOOLS[0]; }
@@ -875,11 +918,11 @@
     tv.width = Math.round(wrapW * dpr); tv.height = Math.round(ch * dpr);
     S.tgeo = { cw: wrapW, ch: ch, dpr: dpr };
   }
-  function previewQuad() { return S.quad.map(function (p) { return { x: p.x * S.pscale, y: p.y * S.pscale }; }); }
+  function previewQuad() { return idealQuad(S.quad.map(function (p) { return { x: p.x * S.pscale, y: p.y * S.pscale }; }), distOf(S.proxyData.width, S.proxyData.height)); }
   function baseFor(angle, tk) {
     var q = previewQuad(), o = outSize(q, 700), a = angle * Math.PI / 180;
     var c = a ? rotCrop(o.w, o.h, a) : o;
-    return warpAsync(S.proxyData, q, c.w, c.h, null, tk, a ? { a: a, fw: o.w, fh: o.h } : null);
+    return warpAsync(S.proxyData, q, c.w, c.h, null, tk, a ? { a: a, fw: o.w, fh: o.h } : null, distOf(S.proxyData.width, S.proxyData.height));
   }
   function enterTune() {
     S.prev = false; $('prevBtn').classList.remove('acc');
@@ -891,13 +934,13 @@
   }
   function buildBases() {
     var tk = ++S.ttoken, ang = Math.round(S.adj.straighten * 10) / 10;
-    var need0 = !S.tbase0;
+    var dv = S.adj.distortion || 0, need0 = !S.tbase0 || S.tbDist !== dv;
     var alive = function () { return tk === S.ttoken; };
     var p0 = need0 ? baseFor(0, alive) : Promise.resolve(S.tbase0);
     var p1 = ang ? p0.then(function () { return baseFor(ang, alive); }) : p0;
     Promise.all([p0, p1]).then(function (r) {
       if (!alive()) return;
-      S.tbase0 = r[0]; S.tbase = r[1]; S.tbaseAng = ang;
+      S.tbase0 = r[0]; S.tbase = r[1]; S.tbaseAng = ang; S.tbDist = dv;
       var asp = S.tbase.width / S.tbase.height;
       if (Math.abs(asp - S.taspect) > 0.002) { S.taspect = asp; layoutTune(); }
       renderTune();
@@ -916,6 +959,16 @@
     var w = img.width * s, h = img.height * s;
     tctx.imageSmoothingQuality = 'high';
     tctx.drawImage(c, (g.cw - w) / 2, (g.ch - h) / 2, w, h);
+    if (S.tool === 'distortion') {
+      // thin guide lines (preview only): a rectangle 5% in from the image edge plus the centre cross
+      var x0 = (g.cw - w) / 2, y0 = (g.ch - h) / 2, mx = w * 0.05, my = h * 0.05;
+      tctx.save(); tctx.strokeStyle = css('--handle'); tctx.lineWidth = 0.75;
+      tctx.strokeRect(x0 + mx, y0 + my, w - 2 * mx, h - 2 * my);
+      tctx.beginPath();
+      tctx.moveTo(x0 + w / 2, y0); tctx.lineTo(x0 + w / 2, y0 + h);
+      tctx.moveTo(x0, y0 + h / 2); tctx.lineTo(x0 + w, y0 + h / 2);
+      tctx.stroke(); tctx.restore();
+    }
   }
   function renderTune() {
     if (!S.tbase) { drawTune(null); return; }
@@ -934,12 +987,14 @@
     b.addEventListener('click', autoFix); chipsEl.appendChild(b);
     var sb = document.createElement('button'); sb.className = 'b'; sb.id = 'schemesBtn'; sb.textContent = 'SCHEMES';
     sb.addEventListener('click', openSheet); chipsEl.appendChild(sb);
+    var lb = document.createElement('button'); lb.className = 'b'; lb.id = 'lensBtn'; lb.textContent = 'LENS';
+    lb.addEventListener('click', openLensSheet); chipsEl.appendChild(lb);
     TOOLS.forEach(function (t) {
       var c = document.createElement('button'); c.className = 'b'; c.setAttribute('data-k', t.k); c.id = 'chip_' + t.k;
       c.innerHTML = t.n + '<span class="dot" style="display:none"></span>';
       c.addEventListener('click', function () {
         if (S.tool === t.k) { S.adj[t.k] = 0; histCommit(); updateTuneUI(); afterTune(t.k); }
-        else { S.tool = t.k; updateTuneUI(); setStatus(t.note, 'ok'); }
+        else { S.tool = t.k; updateTuneUI(); setStatus(t.note, 'ok'); scheduleRender(); }
       });
       chipsEl.appendChild(c);
     });
@@ -965,7 +1020,7 @@
   }
   var angTimer = null;
   function afterTune(k) {
-    if (k === 'straighten') { clearTimeout(angTimer); angTimer = setTimeout(buildBases, 60); } else scheduleRender();
+    if (k === 'straighten' || k === 'distortion') { clearTimeout(angTimer); angTimer = setTimeout(buildBases, 60); } else scheduleRender();
   }
   (function () {
     var trk = $('slTrk'), on = false;
@@ -1005,7 +1060,7 @@
     setStatus('Auto fix set exposure, contrast and warmth. All still adjustable.', 'ok');
   }
   $('undoBtn').addEventListener('click', function () {
-    var hadAng = !!S.adj.straighten; zeroAdj(); histCommit(); updateTuneUI();
+    var hadAng = !!(S.adj.straighten || S.adj.distortion); zeroAdj(); histCommit(); updateTuneUI();
     if (hadAng) buildBases(); else scheduleRender();
   });
   $('tBackBtn').addEventListener('click', function () { S.ttoken++; S.rtk++; show('sCorners'); setStatus(''); });
@@ -1020,17 +1075,31 @@
   show = function (id) { _show(id); if (id === 'sTune') updateTuneUI(); };
 
   // ---------- tune schemes (named sets of tune settings, kept on this device)
-  var SCH_KEY = 'ic_schemes', LAST_KEY = 'ic_last', sheetMode = 'apply';
+  var SCH_KEY = 'ic_schemes', LAST_KEY = 'ic_last', LENS_KEY = 'ic_lenses', LENSON_KEY = 'ic_lens_on', sheetMode = 'apply';
   function lsGet(k, d) { try { var v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } }
   function lsSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
-  function currentVals() { var o = {}; TOOLS.forEach(function (t) { if (t.k !== 'straighten') o[t.k] = S.adj[t.k] || 0; }); return o; }
+  function currentVals() { var o = {}; TOOLS.forEach(function (t) { if (t.k !== 'straighten' && t.k !== 'distortion') o[t.k] = S.adj[t.k] || 0; }); return o; }
   function saveLastAdj() { var o = currentVals(), any = Object.keys(o).some(function (k) { return o[k]; }); if (any) lsSet(LAST_KEY, o); }
   function applyVals(v, label) {
-    TOOLS.forEach(function (t) { if (t.k !== 'straighten') S.adj[t.k] = v[t.k] || 0; });
+    TOOLS.forEach(function (t) { if (t.k !== 'straighten' && t.k !== 'distortion') S.adj[t.k] = v[t.k] || 0; });
     histCommit(); updateTuneUI(); scheduleRender(); closeSheet();
     setStatus(label + ' applied. All still adjustable.', 'ok');
   }
   function openSheet() { sheetMode = 'apply'; renderSheet(); $('sheet').classList.remove('hide'); }
+  function openLensSheet() { sheetMode = 'lens'; renderSheet(); $('sheet').classList.remove('hide'); }
+  function lensOn() { return lsGet(LENSON_KEY, true) !== false; }
+  // a new photo from a lens you have saved starts with that lens's correction
+  function lensAuto(f) {
+    var it = curItem(); if (!it || it.file !== f || it.st || it.lensDone) return;
+    it.lens = S.lens || '';
+    var tbl = lsGet(LENS_KEY, {});
+    if (!lensOn() || !S.lens || typeof tbl[S.lens] !== 'number') return;
+    it.lensDone = true;
+    S.adj.distortion = tbl[S.lens];
+    if (S.hist) S.hist.cur = JSON.stringify(S.adj);
+    if (S.scr === 'sTune') { updateTuneUI(); buildBases(); }
+    setStatus('Lens correction ' + tbl[S.lens] + ' applied for this lens.', 'ok');
+  }
   function closeSheet() { $('sheet').classList.add('hide'); }
   function renderSheet() {
     var box = $('sheetList'); box.innerHTML = '';
@@ -1041,6 +1110,17 @@
       var n = document.createElement('span'); n.textContent = note || ''; b.appendChild(n);
       if (dis) b.disabled = true; else b.addEventListener('click', fn);
       box.appendChild(b);
+    }
+    if (sheetMode === 'lens') {
+      var tbl = lsGet(LENS_KEY, {}), nm = S.lens || '', saved = typeof tbl[nm] === 'number';
+      $('sheetTitle').textContent = 'LENS CORRECTION';
+      item('AUTO FOR SAVED LENSES', lensOn() ? 'ON' : 'OFF', lensOn() ? 'acc' : '', function () { lsSet(LENSON_KEY, !lensOn()); renderSheet(); });
+      item(nm ? 'SAVE DISTORTION FOR THIS LENS' : 'NO LENS NAME IN THIS PHOTO', nm ? nm + '   value ' + (S.adj.distortion || 0) : 'set it by hand', 'act', function () {
+        tbl[nm] = S.adj.distortion || 0; lsSet(LENS_KEY, tbl); renderSheet(); setStatus('Saved ' + tbl[nm] + ' for ' + nm + '.', 'ok');
+      }, !nm);
+      item('FORGET THIS LENS', saved ? 'saved value ' + tbl[nm] : 'nothing saved', 'act', function () { delete tbl[nm]; lsSet(LENS_KEY, tbl); renderSheet(); }, !saved);
+      item('CLOSE', '', '', closeSheet);
+      return;
     }
     $('sheetTitle').textContent = sheetMode === 'delete' ? 'DELETE WHICH SCHEME?' : 'SCHEMES';
     if (sheetMode === 'delete') {
@@ -1055,7 +1135,7 @@
     item('USE LAST', last ? 'from the last photo you saved' : 'nothing saved yet', last ? 'acc' : '', function () { applyVals(last, 'Last settings'); }, !last);
     list.forEach(function (sc) { item(sc.name, 'tap to apply', '', function () { applyVals(sc.vals, sc.name); }); });
     item('SAVE CURRENT AS...', '', 'act', function () {
-      var name = prompt('Name this scheme (straighten is not included):', '');
+      var name = prompt('Name this scheme (straighten and distortion are not included):', '');
       if (name === null) return;
       name = name.replace(/^\s+|\s+$/g, '').slice(0, 24);
       if (!name) return;
@@ -1085,7 +1165,8 @@
     $('outtxt').textContent = 'Working...';
     $('thumb').removeAttribute('src');
     if (S.thumbUrl) { URL.revokeObjectURL(S.thumbUrl); S.thumbUrl = null; }
-    var o = outSize(S.quad, MAXL);
+    var dd = distOf(S.W, S.H), qi = idealQuad(S.quad, dd);
+    var o = outSize(qi, MAXL);
     var ang = (S.adj.straighten || 0) * Math.PI / 180;
     var oc = ang ? rotCrop(o.w, o.h, ang) : o;
     S.outW = oc.w; S.outH = oc.h;
@@ -1099,7 +1180,7 @@
     $('nextPhotoBtn').textContent = nu >= 0 ? 'NEXT PHOTO (' + (nu + 1) + ' OF ' + S.items.length + ')' : 'BACK TO GALLERY';
     TOOLS.forEach(function (t) { adj[t.k] = S.adj[t.k]; });
     var alive = function () { return tk === S.token; };
-    warpAsync(sd, S.quad, oc.w, oc.h, function (f) { setStatus('Squaring up the photo... ' + Math.round(f * 100) + '%', '', f); }, tk, ang ? { a: ang, fw: o.w, fh: o.h } : null).then(function (img) {
+    warpAsync(sd, qi, oc.w, oc.h, function (f) { setStatus('Squaring up the photo... ' + Math.round(f * 100) + '%', '', f); }, tk, ang ? { a: ang, fw: o.w, fh: o.h } : null, dd).then(function (img) {
       sd = null;
       if (flat) return img;
       return processImage(img, adj, { scale: Math.min(6, Math.max(oc.w, oc.h) / 1000), sync: false, alive: alive,
@@ -1319,10 +1400,10 @@
     histUI();
   }
   function restoreAdj(j) {
-    var o = JSON.parse(j), old = S.adj.straighten || 0;
+    var o = JSON.parse(j), old = (S.adj.straighten || 0) + '/' + (S.adj.distortion || 0);
     TOOLS.forEach(function (t) { S.adj[t.k] = o[t.k] || 0; });
     updateTuneUI();
-    if ((S.adj.straighten || 0) !== old) buildBases(); else scheduleRender();
+    if (((S.adj.straighten || 0) + '/' + (S.adj.distortion || 0)) !== old) buildBases(); else scheduleRender();
   }
   function doUndo() { var h = S.hist; if (!h || !h.u.length) return; h.r.push(h.cur); h.cur = h.u.pop(); restoreAdj(h.cur); }
   function doRedo() { var h = S.hist; if (!h || !h.r.length) return; h.u.push(h.cur); h.cur = h.r.pop(); restoreAdj(h.cur); }
@@ -1332,7 +1413,7 @@
   applyTheme();
   show('sStart');
   // test hook (harmless on the phone)
-  window.__IC = { openSheet: openSheet, applyVals: applyVals, currentVals: currentVals, S: S, loadFile: loadFile, warpAsync: warpAsync, homography: homography, outSize: outSize, processImage: processImage, rotCrop: rotCrop, enterTune: enterTune, TOOLS: TOOLS, openIndex: openIndex, goScreen: goScreen, doUndo: doUndo, doRedo: doRedo };
+  window.__IC = { openSheet: openSheet, applyVals: applyVals, currentVals: currentVals, S: S, loadFile: loadFile, warpAsync: warpAsync, homography: homography, outSize: outSize, processImage: processImage, rotCrop: rotCrop, enterTune: enterTune, TOOLS: TOOLS, distOf: distOf, idealQuad: idealQuad, lensOf: lensOf, openLensSheet: openLensSheet, openIndex: openIndex, goScreen: goScreen, doUndo: doUndo, doRedo: doRedo };
 })();
 </script>
 </body>
