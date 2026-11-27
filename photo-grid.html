@@ -878,7 +878,7 @@ function stretchDown(e) {
   pushUndo();
   S.sdrag = { pid: e.pointerId, kind: kind, x0: p.x, y0: p.y, w0: g.r[2], h0: g.r[3], sx0: v.sx || 1, sy0: v.sy || 1,
               start: S.stretch.ids.map(function (i) { var r = S.reg[i]; return r ? [i, r.sx || 1, r.sy || 1, r.ax, r.ay] : null; }).filter(Boolean),   /* every tile's own scale at the start */
-              cw: cell[2] / L.scale, ch: cell[3] / L.scale };       /* the cell at the start, in native units */
+              cw: cell[2] / L.scale, ch: cell[3] / L.scale, nb: neighbourSizes(g.k, (function () { var m = {}; S.stretch.ids.forEach(function (i) { m[i] = 1; }); return m; })()) };       /* the cell at the start, in native units */
   /* the opposite edge stays put: pin the tile to that side of its cell */
   S.sdrag.start.forEach(function (q) {
     var r = S.reg[q[0]]; if (!r) return;
@@ -886,6 +886,27 @@ function stretchDown(e) {
     if (kind === 'b' || kind === 'bl' || kind === 'br') r.ay = -1; else if (kind === 't' || kind === 'tl' || kind === 'tr') r.ay = 1;
   });
   try { cv.setPointerCapture(e.pointerId); } catch (x) { /* ignore */ }
+}
+function snapMulti(raw, targets, start, scale) {      /* snapSize across several targets: growing past the start uses those above it, shrinking uses those below; continuous throughout */
+  var tol = 6 / scale, hold = 16 / scale, shift = 0, i, t, v;
+  if (raw >= start) {
+    var up = targets.filter(function (x) { return x >= start - .5; }).sort(function (p, q) { return p - q; });
+    for (i = 0; i < up.length; i++) { t = up[i]; v = raw - shift; if (v < t - tol) break; if (v <= t + hold) return t; shift += hold; }
+    return raw - shift;
+  }
+  var dn = targets.filter(function (x) { return x < start - .5; }).sort(function (p, q) { return q - p; });
+  for (i = 0; i < dn.length; i++) { t = dn[i]; v = raw + shift; if (v > t + tol) break; if (v >= t - hold) return t; shift += hold; }
+  return raw + shift;
+}
+function neighbourSizes(k, skip) {                    /* native sizes of the adjacent tiles: widths beside, heights above and below */
+  var cols = S.cols, c = k % cols, ws = [], hs = [];
+  function add(j, list, dim) {
+    if (j < 0 || j >= S.slots.length) return; var id = S.slots[j]; if (id === null || skip[id]) return;
+    list.push(effSize(S.reg[id])[dim]);
+  }
+  if (c > 0) add(k - 1, ws, 0); if (c < cols - 1) add(k + 1, ws, 0);
+  add(k - cols, hs, 1); add(k + cols, hs, 1);
+  return { ws: ws, hs: hs };
 }
 function snapSize(raw, cell, scale) {                 /* native units: stick at the cell size, then give way */
   var tol = 6 / scale, hold = 16 / scale;
@@ -903,7 +924,8 @@ function stretchMove(e) {
     var gx = d.kind.charAt(1) === 'r' ? 1 : -1, gy = d.kind.charAt(0) === 'b' ? 1 : -1;
     var fr = ((d.w0 + gx * (p.x - d.x0)) / d.w0 + (d.h0 + gy * (p.y - d.y0)) / d.h0) / 2;
     var w0n = d.w0 / sc, h0n = d.h0 / sc;
-    fx = fy = Math.min(snapSize(w0n * fr, d.cw, sc) / w0n, snapSize(h0n * fr, d.ch, sc) / h0n);
+    var wT = d.nb.ws.concat([d.cw]), hT = d.nb.hs.concat([d.ch]);
+    fx = fy = Math.min(snapMulti(w0n * fr, wT, w0n, sc) / w0n, snapMulti(h0n * fr, hT, h0n, sc) / h0n);
   }
   d.start.forEach(function (q) {
     var r = S.reg[q[0]]; if (!r) return;
