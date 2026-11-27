@@ -11,11 +11,11 @@
 <style>
   :root, body[data-theme="dark"] {
     --bg:#1A1A1A; --card:#252525; --border:#3C3C3C; --text:#F4F1EB; --label:#B9B5AE; --sub:#CFCBC4;
-    --accbg:#F4F1EB; --accfg:#1A1A1A; --btn:#2E2E2E; --err:#E59A72; --ok:#7DBF8E;
+    --accbg:#F4F1EB; --accfg:#1A1A1A; --btn:#2E2E2E; --err:#E59A72; --ok:#7DBF8E; --handle:#D4845A;
   }
   body[data-theme="light"] {
     --bg:#E8E5DF; --card:#FFFFFF; --border:#CFCBC3; --text:#1A1A1A; --label:#6F6B66; --sub:#5F5B56;
-    --accbg:#1A1A1A; --accfg:#FFFFFF; --btn:#FFFFFF; --err:#A0522D; --ok:#3F6B4C;
+    --accbg:#1A1A1A; --accfg:#FFFFFF; --btn:#FFFFFF; --err:#A0522D; --ok:#3F6B4C; --handle:#A0522D;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
   html, body { height: 100%; background: var(--bg); color: var(--text); font-family: Georgia, serif; -webkit-text-size-adjust: 100%; }
@@ -534,15 +534,19 @@ function render() {
     for (i = 0; i < S.slots.length; i++) if (S.slots[i] !== null) { var cc = L.cells[i]; ctx.strokeRect(cc[0] + .5, cc[1] + .5, cc[2] - 1, cc[3] - 1); }
     ctx.restore();
   }
-  if (S.stretch && !S.full) {                           /* stretch handles on the tile(s) being stretched */
+  if (S.stretch && !S.full) {                           /* stretch handles, drawn like the Image Corrector's: orange outline, square edge handles, round corner handles */
     var g = stretchRects();
     if (g) {
-      ctx.save(); ctx.strokeStyle = cssVar('--text'); ctx.lineWidth = 2; ctx.setLineDash([]);
-      S.stretch.ids.forEach(function (sid) { var sk = slotOf(sid); if (sk >= 0) { var sr = L.rects[sk]; ctx.strokeRect(sr[0] + 1, sr[1] + 1, sr[2] - 2, sr[3] - 2); } });
+      var hcol = cssVar('--handle'), hcard = cssVar('--card');
+      ctx.save(); ctx.strokeStyle = hcol; ctx.lineWidth = 2; ctx.setLineDash([]);
+      S.stretch.ids.forEach(function (sid) { var sk = slotOf(sid); if (sk >= 0) { var sr = L.rects[sk]; ctx.strokeRect(sr[0], sr[1], sr[2], sr[3]); } });
       ['r_', 'l', 'b', 't'].forEach(function (n) {
-        var hc = g[n], q = 12;
-        ctx.fillStyle = cssVar('--text'); ctx.fillRect(hc[0] - q, hc[1] - q, 2 * q, 2 * q);
-        ctx.strokeStyle = cssVar('--bg'); ctx.lineWidth = 2; ctx.strokeRect(hc[0] - q, hc[1] - q, 2 * q, 2 * q);
+        var hc = g[n], q = 6.5;
+        ctx.fillStyle = hcard; ctx.fillRect(hc[0] - q, hc[1] - q, 2 * q, 2 * q); ctx.strokeRect(hc[0] - q, hc[1] - q, 2 * q, 2 * q);
+      });
+      ['tl', 'tr', 'bl', 'br'].forEach(function (n) {
+        var hc = g[n];
+        ctx.beginPath(); ctx.arc(hc[0], hc[1], 9, 0, Math.PI * 2); ctx.fillStyle = hcard; ctx.fill(); ctx.stroke();
       });
       ctx.restore();
     }
@@ -844,12 +848,12 @@ function stretchRects() {                             /* handle centres for the 
   if (!S.stretch || !L) return null;
   var k = slotOf(S.stretch.id); if (k < 0) return null;
   var r = L.rects[k];
-  return { r: r, k: k, r_: [r[0] + r[2], r[1] + r[3] / 2], l: [r[0], r[1] + r[3] / 2], b: [r[0] + r[2] / 2, r[1] + r[3]], t: [r[0] + r[2] / 2, r[1]] };
+  return { r: r, k: k, tl: [r[0], r[1]], tr: [r[0] + r[2], r[1]], bl: [r[0], r[1] + r[3]], br: [r[0] + r[2], r[1] + r[3]], r_: [r[0] + r[2], r[1] + r[3] / 2], l: [r[0], r[1] + r[3] / 2], b: [r[0] + r[2] / 2, r[1] + r[3]], t: [r[0] + r[2] / 2, r[1]] };
 }
 function stretchHit(p) {
   var g = stretchRects(); if (!g) return null;
-  var order = ['r_', 'l', 'b', 't'];
-  for (var i = 0; i < 4; i++) { var c = g[order[i]]; if (Math.abs(p.x - c[0]) <= HANDLE && Math.abs(p.y - c[1]) <= HANDLE) return order[i]; }
+  var order = ['tl', 'tr', 'bl', 'br', 'r_', 'l', 'b', 't'];
+  for (var i = 0; i < 8; i++) { var c = g[order[i]]; if (Math.abs(p.x - c[0]) <= HANDLE && Math.abs(p.y - c[1]) <= HANDLE) return order[i]; }
   return null;
 }
 function stretchInfo() {
@@ -859,7 +863,7 @@ function stretchInfo() {
 function stretchEnter(id) {
   var ids = removeIds(id); S.stretch = { id: id, ids: ids };
   $('sbar').hidden = false; stretchInfo(); invalidate();
-  status('Drag a square: left/right edges = width, top/bottom edges = height. It snaps to the cell size. Tap empty space or DONE to finish.');
+  status('Drag a square: square handles stretch one direction, round corner handles scale the whole tile in proportion. It snaps to the cell size. Tap empty space or DONE to finish.');
 }
 function stretchExit() { if (!S.stretch) return; S.stretch = null; S.sdrag = null; $('sbar').hidden = true; invalidate(); status('Stretch done.'); }
 function stretchReset() {
@@ -878,7 +882,8 @@ function stretchDown(e) {
   /* the opposite edge stays put: pin the tile to that side of its cell */
   S.sdrag.start.forEach(function (q) {
     var r = S.reg[q[0]]; if (!r) return;
-    if (kind === 'r_') r.ax = -1; else if (kind === 'l') r.ax = 1; else if (kind === 'b') r.ay = -1; else if (kind === 't') r.ay = 1;
+    if (kind === 'r_' || kind === 'tr' || kind === 'br') r.ax = -1; else if (kind === 'l' || kind === 'tl' || kind === 'bl') r.ax = 1;
+    if (kind === 'b' || kind === 'bl' || kind === 'br') r.ay = -1; else if (kind === 't' || kind === 'tl' || kind === 'tr') r.ay = 1;
   });
   try { cv.setPointerCapture(e.pointerId); } catch (x) { /* ignore */ }
 }
@@ -894,6 +899,12 @@ function stretchMove(e) {
   var fx = 1, fy = 1;                                   /* factor applied to every selected tile, so their relative scaling is kept */
   if (d.kind === 'r_' || d.kind === 'l') fx = snapSize((d.w0 + (d.kind === 'l' ? -1 : 1) * (p.x - d.x0)) / sc, d.cw, sc) / e0[0] / d.sx0;
   if (d.kind === 'b' || d.kind === 't') fy = snapSize((d.h0 + (d.kind === 't' ? -1 : 1) * (p.y - d.y0)) / sc, d.ch, sc) / e0[1] / d.sy0;
+  if (d.kind.length === 2 && d.kind !== 'r_') {          /* corner: one factor for both directions, so the tile keeps its proportions */
+    var gx = d.kind.charAt(1) === 'r' ? 1 : -1, gy = d.kind.charAt(0) === 'b' ? 1 : -1;
+    var fr = ((d.w0 + gx * (p.x - d.x0)) / d.w0 + (d.h0 + gy * (p.y - d.y0)) / d.h0) / 2;
+    var w0n = d.w0 / sc, h0n = d.h0 / sc;
+    fx = fy = Math.min(snapSize(w0n * fr, d.cw, sc) / w0n, snapSize(h0n * fr, d.ch, sc) / h0n);
+  }
   d.start.forEach(function (q) {
     var r = S.reg[q[0]]; if (!r) return;
     r.sx = Math.max(SMIN, Math.min(SMAX, q[1] * fx)); r.sy = Math.max(SMIN, Math.min(SMAX, q[2] * fy));
