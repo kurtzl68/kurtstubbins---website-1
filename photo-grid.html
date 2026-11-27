@@ -838,6 +838,7 @@ function syncUi() {
   ['bGrid', 'bGrid2'].forEach(function (k) { var g = $(k); if (g) g.textContent = S.showGrid ? 'GRID: ON' : 'GRID: OFF'; });
 }
 /* ---------------------------------------------------------------- stretch */
+var SMIN = .1, SMAX = 10;                             /* stretch limits: 10% to 1000% */
 var HANDLE = 26;                                      /* half-size of a handle's touch area, in px */
 function stretchRects() {                             /* handle centres for the tile being stretched */
   if (!S.stretch || !L) return null;
@@ -872,8 +873,13 @@ function stretchDown(e) {
   var v = S.reg[S.stretch.id], cell = L.cells[g.k];
   pushUndo();
   S.sdrag = { pid: e.pointerId, kind: kind, x0: p.x, y0: p.y, w0: g.r[2], h0: g.r[3], sx0: v.sx || 1, sy0: v.sy || 1,
-              start: S.stretch.ids.map(function (i) { var r = S.reg[i]; return r ? [i, r.sx || 1, r.sy || 1] : null; }).filter(Boolean),   /* every tile's own scale at the start */
+              start: S.stretch.ids.map(function (i) { var r = S.reg[i]; return r ? [i, r.sx || 1, r.sy || 1, r.ax, r.ay] : null; }).filter(Boolean),   /* every tile's own scale at the start */
               cw: cell[2] / L.scale, ch: cell[3] / L.scale };       /* the cell at the start, in native units */
+  /* the opposite edge stays put: pin the tile to that side of its cell */
+  S.sdrag.start.forEach(function (q) {
+    var r = S.reg[q[0]]; if (!r) return;
+    if (kind === 'r_') r.ax = -1; else if (kind === 'l') r.ax = 1; else if (kind === 'b') r.ay = -1; else if (kind === 't') r.ay = 1;
+  });
   try { cv.setPointerCapture(e.pointerId); } catch (x) { /* ignore */ }
 }
 function snapSize(raw, cell, scale) {                 /* native units: stick at the cell size, then give way */
@@ -890,13 +896,13 @@ function stretchMove(e) {
   if (d.kind === 'b' || d.kind === 't') fy = snapSize((d.h0 + (d.kind === 't' ? -1 : 1) * (p.y - d.y0)) / sc, d.ch, sc) / e0[1] / d.sy0;
   d.start.forEach(function (q) {
     var r = S.reg[q[0]]; if (!r) return;
-    r.sx = Math.max(.25, Math.min(3, q[1] * fx)); r.sy = Math.max(.25, Math.min(3, q[2] * fy));
+    r.sx = Math.max(SMIN, Math.min(SMAX, q[1] * fx)); r.sy = Math.max(SMIN, Math.min(SMAX, q[2] * fy));
   });
   L = computeView(); stretchInfo(); invalidate();
 }
 function stretchUp() {
   var d = S.sdrag, t = S.stretch; S.sdrag = null; if (!d || !t) return;
-  var v = S.reg[t.id]; if (v && Math.abs((v.sx || 1) - d.sx0) < 1e-6 && Math.abs((v.sy || 1) - d.sy0) < 1e-6) S.undo.pop();   /* nothing changed: no undo step */
+  var v = S.reg[t.id]; if (v && Math.abs((v.sx || 1) - d.sx0) < 1e-6 && Math.abs((v.sy || 1) - d.sy0) < 1e-6) { d.start.forEach(function (q) { var r = S.reg[q[0]]; if (r) { r.ax = q[3]; r.ay = q[4]; } }); S.undo.pop(); }   /* nothing changed: no undo step */
   syncUi(); invalidate();
 }
 window.addEventListener('pointermove', function (e) { if (S.sdrag && e.pointerId === S.sdrag.pid) stretchMove(e); });
