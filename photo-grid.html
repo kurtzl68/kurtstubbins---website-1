@@ -297,6 +297,7 @@ function cssVar(n) {
   if (!cssCache[k]) cssCache[k] = getComputedStyle(document.body).getPropertyValue(n).trim();
   return cssCache[k];
 }
+function gridCol() { return dark() ? cssVar('--label') : cssVar('--handle'); }   /* light theme: the Image Corrector's orange; dark theme unchanged */
 function dark() { return document.body.getAttribute('data-theme') === 'dark'; }
 function mk(w, h) { var c = document.createElement('canvas'); c.width = Math.max(1, w); c.height = Math.max(1, h); return c; }
 function release(c) { c.width = 1; c.height = 1; }
@@ -517,7 +518,7 @@ function render() {
   var i, d = S.drag, moving = {};
   if (d && d.ids) d.ids.forEach(function (id) { moving[id] = 1; });
   if (!S.full) {                                       /* outlines for empty slots (GRID toggle; new row/column always while dragging) */
-    ctx.save(); ctx.strokeStyle = cssVar('--label'); ctx.globalAlpha = .5; ctx.setLineDash([4, 4]); ctx.lineWidth = 1;
+    ctx.save(); ctx.strokeStyle = gridCol(); ctx.globalAlpha = .5; ctx.setLineDash([4, 4]); ctx.lineWidth = 1;
     for (i = 0; i < S.slots.length; i++) if (S.slots[i] === null) {
       var isNew = d && d.orig && (i % S.cols >= d.orig.cols || Math.floor(i / S.cols) >= d.orig.rows);
       if (!S.showGrid && !isNew) continue;
@@ -530,7 +531,7 @@ function render() {
     var r = L.rects[i]; drawTileTo(ctx, S.reg[id].bmp, S.reg[id], r[0], r[1], r[2], r[3]);
   }
   if (S.showGrid && !S.full && count() > 0) {          /* GRID: ON also frames every occupied cell, on top of the photos */
-    ctx.save(); ctx.strokeStyle = cssVar('--label'); ctx.globalAlpha = .7; ctx.setLineDash([]); ctx.lineWidth = 1;
+    ctx.save(); ctx.strokeStyle = gridCol(); ctx.globalAlpha = .7; ctx.setLineDash([]); ctx.lineWidth = 1;
     for (i = 0; i < S.slots.length; i++) if (S.slots[i] !== null) { var cc = L.cells[i]; ctx.strokeRect(cc[0] + .5, cc[1] + .5, cc[2] - 1, cc[3] - 1); }
     ctx.restore();
   }
@@ -878,7 +879,7 @@ function stretchDown(e) {
   pushUndo();
   S.sdrag = { pid: e.pointerId, kind: kind, x0: p.x, y0: p.y, w0: g.r[2], h0: g.r[3], sx0: v.sx || 1, sy0: v.sy || 1,
               start: S.stretch.ids.map(function (i) { var r = S.reg[i]; return r ? [i, r.sx || 1, r.sy || 1, r.ax, r.ay] : null; }).filter(Boolean),   /* every tile's own scale at the start */
-              cw: cell[2] / L.scale, ch: cell[3] / L.scale, nb: neighbourSizes(g.k, (function () { var m = {}; S.stretch.ids.forEach(function (i) { m[i] = 1; }); return m; })()) };       /* the cell at the start, in native units */
+              cw: cell[2] / L.scale, ch: cell[3] / L.scale, nb: lineSizes(g.k, (function () { var m = {}; S.stretch.ids.forEach(function (i) { m[i] = 1; }); return m; })()) };       /* the cell at the start, in native units */
   /* the opposite edge stays put: pin the tile to that side of its cell */
   S.sdrag.start.forEach(function (q) {
     var r = S.reg[q[0]]; if (!r) return;
@@ -899,12 +900,14 @@ function snapFactor(fr, targets) {                    /* one chain of snap point
   for (i = 0; i < dn.length; i++) { t = dn[i]; v = fr + shift; if (v > t.f + t.tol) break; if (v >= t.f - t.hold) return t.f; shift += t.hold; }
   return fr + shift;
 }
-function neighbourSizes(k, skip) {                    /* native sizes [w, h] of the tiles touching this one: left, right, above, below */
-  var cols = S.cols, c = k % cols, out = [];
-  function add(j) { if (j < 0 || j >= S.slots.length) return; var id = S.slots[j]; if (id === null || skip[id]) return; out.push(effSize(S.reg[id])); }
-  if (c > 0) add(k - 1); if (c < cols - 1) add(k + 1);
-  add(k - cols); add(k + cols);
-  return out;
+function lineSizes(k, skip) {                         /* native widths of the other tiles in this tile's column, heights of the other tiles in its row */
+  var cols = S.cols, c = k % cols, r = Math.floor(k / cols), ws = [], hs = [], j, id;
+  for (j = 0; j < S.slots.length; j++) {
+    id = S.slots[j]; if (id === null || j === k || skip[id]) continue;
+    if (j % cols === c) ws.push(effSize(S.reg[id])[0]);
+    if (Math.floor(j / cols) === r) hs.push(effSize(S.reg[id])[1]);
+  }
+  return { ws: ws, hs: hs };
 }
 function snapSize(raw, cell, scale) {                 /* native units: stick at the cell size, then give way */
   var tol = 6 / scale, hold = 16 / scale;
@@ -922,11 +925,9 @@ function stretchMove(e) {
     var gx = d.kind.charAt(1) === 'r' ? 1 : -1, gy = d.kind.charAt(0) === 'b' ? 1 : -1;
     var fr = ((d.w0 + gx * (p.x - d.x0)) / d.w0 + (d.h0 + gy * (p.y - d.y0)) / d.h0) / 2;
     var w0n = d.w0 / sc, h0n = d.h0 / sc;
-    var sizes = d.nb.concat([[d.cw, d.ch]]), tg = [], tolp = 6 / sc, holdp = 16 / sc;
-    sizes.forEach(function (z) {
-      tg.push({ f: z[0] / w0n, tol: tolp / w0n, hold: holdp / w0n, eps: .5 / w0n });   /* match that width */
-      tg.push({ f: z[1] / h0n, tol: tolp / h0n, hold: holdp / h0n, eps: .5 / h0n });   /* match that height */
-    });
+    var tg = [], tolp = 6 / sc, holdp = 16 / sc;
+    d.nb.ws.concat([d.cw]).forEach(function (z) { tg.push({ f: z / w0n, tol: tolp / w0n, hold: holdp / w0n, eps: .5 / w0n }); });   /* widths in this column + own cell */
+    d.nb.hs.concat([d.ch]).forEach(function (z) { tg.push({ f: z / h0n, tol: tolp / h0n, hold: holdp / h0n, eps: .5 / h0n }); });   /* heights in this row + own cell */
     fx = fy = snapFactor(fr, tg);
   }
   d.start.forEach(function (q) {
