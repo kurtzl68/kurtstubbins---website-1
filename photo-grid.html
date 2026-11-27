@@ -926,7 +926,7 @@ function stretchMove(e) {
     var gx = d.kind.charAt(1) === 'r' ? 1 : -1, gy = d.kind.charAt(0) === 'b' ? 1 : -1;
     var fr = ((d.w0 + gx * (p.x - d.x0)) / d.w0 + (d.h0 + gy * (p.y - d.y0)) / d.h0) / 2;
     var w0n = d.w0 / sc, h0n = d.h0 / sc;
-    var tg = [], tolp = 6 / sc, holdp = 16 / sc;
+    var tg = [], tolp = 10 / sc, holdp = 16 / sc;
     d.nb.ws.concat([d.cw]).forEach(function (z) { tg.push({ f: z / w0n, tol: tolp / w0n, hold: holdp / w0n, eps: .5 / w0n }); });   /* widths in this column + own cell */
     d.nb.hs.concat([d.ch]).forEach(function (z) { tg.push({ f: z / h0n, tol: tolp / h0n, hold: holdp / h0n, eps: .5 / h0n }); });   /* heights in this row + own cell */
     fx = fy = snapFactor(fr, tg);
