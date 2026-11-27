@@ -888,7 +888,7 @@ function stretchDown(e) {
   try { cv.setPointerCapture(e.pointerId); } catch (x) { /* ignore */ }
 }
 function snapSize(raw, cell, scale) {                 /* native units: stick at the cell size, then give way */
-  var tol = 10 / scale, hold = 28 / scale;
+  var tol = 6 / scale, hold = 16 / scale;
   if (raw < cell - tol) return raw;
   if (raw <= cell + hold) return cell;
   return raw - hold;
