@@ -887,26 +887,24 @@ function stretchDown(e) {
   });
   try { cv.setPointerCapture(e.pointerId); } catch (x) { /* ignore */ }
 }
-function snapMulti(raw, targets, start, scale) {      /* snapSize across several targets: growing past the start uses those above it, shrinking uses those below; continuous throughout */
-  var tol = 6 / scale, hold = 16 / scale, shift = 0, i, t, v;
-  if (raw >= start) {
-    var up = targets.filter(function (x) { return x >= start - .5; }).sort(function (p, q) { return p - q; });
-    for (i = 0; i < up.length; i++) { t = up[i]; v = raw - shift; if (v < t - tol) break; if (v <= t + hold) return t; shift += hold; }
-    return raw - shift;
+function snapFactor(fr, targets) {                    /* one chain of snap points in scale-factor terms; each has its own catch and hold. Continuous between points. */
+  var shift = 0, i, t, v, up = [], dn = [];
+  targets.forEach(function (x) { (x.f >= 1 - x.eps ? up : dn).push(x); });
+  if (fr >= 1) {
+    up.sort(function (p, q) { return p.f - q.f; });
+    for (i = 0; i < up.length; i++) { t = up[i]; v = fr - shift; if (v < t.f - t.tol) break; if (v <= t.f + t.hold) return t.f; shift += t.hold; }
+    return fr - shift;
   }
-  var dn = targets.filter(function (x) { return x < start - .5; }).sort(function (p, q) { return q - p; });
-  for (i = 0; i < dn.length; i++) { t = dn[i]; v = raw + shift; if (v > t + tol) break; if (v >= t - hold) return t; shift += hold; }
-  return raw + shift;
+  dn.sort(function (p, q) { return q.f - p.f; });
+  for (i = 0; i < dn.length; i++) { t = dn[i]; v = fr + shift; if (v > t.f + t.tol) break; if (v >= t.f - t.hold) return t.f; shift += t.hold; }
+  return fr + shift;
 }
-function neighbourSizes(k, skip) {                    /* native sizes of the adjacent tiles: widths beside, heights above and below */
-  var cols = S.cols, c = k % cols, ws = [], hs = [];
-  function add(j, list, dim) {
-    if (j < 0 || j >= S.slots.length) return; var id = S.slots[j]; if (id === null || skip[id]) return;
-    list.push(effSize(S.reg[id])[dim]);
-  }
-  if (c > 0) add(k - 1, ws, 0); if (c < cols - 1) add(k + 1, ws, 0);
-  add(k - cols, hs, 1); add(k + cols, hs, 1);
-  return { ws: ws, hs: hs };
+function neighbourSizes(k, skip) {                    /* native sizes [w, h] of the tiles touching this one: left, right, above, below */
+  var cols = S.cols, c = k % cols, out = [];
+  function add(j) { if (j < 0 || j >= S.slots.length) return; var id = S.slots[j]; if (id === null || skip[id]) return; out.push(effSize(S.reg[id])); }
+  if (c > 0) add(k - 1); if (c < cols - 1) add(k + 1);
+  add(k - cols); add(k + cols);
+  return out;
 }
 function snapSize(raw, cell, scale) {                 /* native units: stick at the cell size, then give way */
   var tol = 6 / scale, hold = 16 / scale;
@@ -924,8 +922,12 @@ function stretchMove(e) {
     var gx = d.kind.charAt(1) === 'r' ? 1 : -1, gy = d.kind.charAt(0) === 'b' ? 1 : -1;
     var fr = ((d.w0 + gx * (p.x - d.x0)) / d.w0 + (d.h0 + gy * (p.y - d.y0)) / d.h0) / 2;
     var w0n = d.w0 / sc, h0n = d.h0 / sc;
-    var wT = d.nb.ws.concat([d.cw]), hT = d.nb.hs.concat([d.ch]);
-    fx = fy = Math.min(snapMulti(w0n * fr, wT, w0n, sc) / w0n, snapMulti(h0n * fr, hT, h0n, sc) / h0n);
+    var sizes = d.nb.concat([[d.cw, d.ch]]), tg = [], tolp = 6 / sc, holdp = 16 / sc;
+    sizes.forEach(function (z) {
+      tg.push({ f: z[0] / w0n, tol: tolp / w0n, hold: holdp / w0n, eps: .5 / w0n });   /* match that width */
+      tg.push({ f: z[1] / h0n, tol: tolp / h0n, hold: holdp / h0n, eps: .5 / h0n });   /* match that height */
+    });
+    fx = fy = snapFactor(fr, tg);
   }
   d.start.forEach(function (q) {
     var r = S.reg[q[0]]; if (!r) return;
