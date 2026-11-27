@@ -539,8 +539,8 @@ function render() {
     if (g) {
       ctx.save(); ctx.strokeStyle = cssVar('--text'); ctx.lineWidth = 2; ctx.setLineDash([]);
       S.stretch.ids.forEach(function (sid) { var sk = slotOf(sid); if (sk >= 0) { var sr = L.rects[sk]; ctx.strokeRect(sr[0] + 1, sr[1] + 1, sr[2] - 2, sr[3] - 2); } });
-      ['v', 'h', 'hv'].forEach(function (n) {
-        var hc = g[n], q = n === 'hv' ? 15 : 12;
+      ['v', 'h'].forEach(function (n) {
+        var hc = g[n], q = 12;
         ctx.fillStyle = cssVar('--text'); ctx.fillRect(hc[0] - q, hc[1] - q, 2 * q, 2 * q);
         ctx.strokeStyle = cssVar('--bg'); ctx.lineWidth = 2; ctx.strokeRect(hc[0] - q, hc[1] - q, 2 * q, 2 * q);
       });
@@ -843,12 +843,12 @@ function stretchRects() {                             /* handle centres for the 
   if (!S.stretch || !L) return null;
   var k = slotOf(S.stretch.id); if (k < 0) return null;
   var r = L.rects[k];
-  return { r: r, k: k, hv: [r[0] + r[2], r[1] + r[3]], h: [r[0] + r[2], r[1] + r[3] / 2], v: [r[0] + r[2] / 2, r[1] + r[3]] };
+  return { r: r, k: k, h: [r[0] + r[2], r[1] + r[3] / 2], v: [r[0] + r[2] / 2, r[1] + r[3]] };
 }
 function stretchHit(p) {
   var g = stretchRects(); if (!g) return null;
-  var order = ['hv', 'h', 'v'];
-  for (var i = 0; i < 3; i++) { var c = g[order[i]]; if (Math.abs(p.x - c[0]) <= HANDLE && Math.abs(p.y - c[1]) <= HANDLE) return order[i]; }
+  var order = ['h', 'v'];
+  for (var i = 0; i < 2; i++) { var c = g[order[i]]; if (Math.abs(p.x - c[0]) <= HANDLE && Math.abs(p.y - c[1]) <= HANDLE) return order[i]; }
   return null;
 }
 function stretchInfo() {
@@ -858,7 +858,7 @@ function stretchInfo() {
 function stretchEnter(id) {
   var ids = removeIds(id); S.stretch = { id: id, ids: ids };
   $('sbar').hidden = false; stretchInfo(); invalidate();
-  status('Drag a square: right edge = width, bottom edge = height, corner = both. It snaps to the cell size. Tap empty space or DONE to finish.');
+  status('Drag a square: right edge = width, bottom edge = height. It snaps to the cell size. Tap empty space or DONE to finish.');
 }
 function stretchExit() { if (!S.stretch) return; S.stretch = null; S.sdrag = null; $('sbar').hidden = true; invalidate(); status('Stretch done.'); }
 function stretchReset() {
@@ -872,6 +872,7 @@ function stretchDown(e) {
   var v = S.reg[S.stretch.id], cell = L.cells[g.k];
   pushUndo();
   S.sdrag = { pid: e.pointerId, kind: kind, x0: p.x, y0: p.y, w0: g.r[2], h0: g.r[3], sx0: v.sx || 1, sy0: v.sy || 1,
+              start: S.stretch.ids.map(function (i) { var r = S.reg[i]; return r ? [i, r.sx || 1, r.sy || 1] : null; }).filter(Boolean),   /* every tile's own scale at the start */
               cw: cell[2] / L.scale, ch: cell[3] / L.scale };       /* the cell at the start, in native units */
   try { cv.setPointerCapture(e.pointerId); } catch (x) { /* ignore */ }
 }
@@ -884,11 +885,13 @@ function snapSize(raw, cell, scale) {                 /* native units: stick at 
 function stretchMove(e) {
   var d = S.sdrag, t = S.stretch; if (!d || !t) return;
   var p = pt(e), v = S.reg[t.id], e0 = v.rot % 180 ? [v.h, v.w] : [v.w, v.h], sc = L.scale || 1;
-  var sx = d.sx0, sy = d.sy0;
-  if (d.kind === 'h' || d.kind === 'hv') sx = snapSize((d.w0 + p.x - d.x0) / sc, d.cw, sc) / e0[0];
-  if (d.kind === 'v' || d.kind === 'hv') sy = snapSize((d.h0 + p.y - d.y0) / sc, d.ch, sc) / e0[1];
-  sx = Math.max(.25, Math.min(3, sx)); sy = Math.max(.25, Math.min(3, sy));
-  t.ids.forEach(function (i) { if (S.reg[i]) { S.reg[i].sx = sx; S.reg[i].sy = sy; } });
+  var fx = 1, fy = 1;                                   /* factor applied to every selected tile, so their relative scaling is kept */
+  if (d.kind === 'h') fx = snapSize((d.w0 + p.x - d.x0) / sc, d.cw, sc) / e0[0] / d.sx0;
+  if (d.kind === 'v') fy = snapSize((d.h0 + p.y - d.y0) / sc, d.ch, sc) / e0[1] / d.sy0;
+  d.start.forEach(function (q) {
+    var r = S.reg[q[0]]; if (!r) return;
+    r.sx = Math.max(.25, Math.min(3, q[1] * fx)); r.sy = Math.max(.25, Math.min(3, q[2] * fy));
+  });
   L = computeView(); stretchInfo(); invalidate();
 }
 function stretchUp() {
