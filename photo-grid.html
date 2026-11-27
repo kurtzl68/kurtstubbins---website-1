@@ -15,7 +15,7 @@
   }
   body[data-theme="light"] {
     --bg:#E8E5DF; --card:#FFFFFF; --border:#CFCBC3; --text:#1A1A1A; --label:#6F6B66; --sub:#5F5B56;
-    --accbg:#1A1A1A; --accfg:#FFFFFF; --btn:#FFFFFF; --err:#A0522D; --ok:#3F6B4C; --handle:#A0522D;
+    --accbg:#1A1A1A; --accfg:#FFFFFF; --btn:#FFFFFF; --err:#A0522D; --ok:#3F6B4C; --handle:#B85E34;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
   html, body { height: 100%; background: var(--bg); color: var(--text); font-family: Georgia, serif; -webkit-text-size-adjust: 100%; }
@@ -298,6 +298,7 @@ function cssVar(n) {
   return cssCache[k];
 }
 function gridCol() { return dark() ? cssVar('--label') : cssVar('--handle'); }   /* light theme: the Image Corrector's orange; dark theme unchanged */
+function accentCol() { return dark() ? cssVar('--text') : cssVar('--handle'); }   /* selection outline: orange in the light theme */
 function dark() { return document.body.getAttribute('data-theme') === 'dark'; }
 function mk(w, h) { var c = document.createElement('canvas'); c.width = Math.max(1, w); c.height = Math.max(1, h); return c; }
 function release(c) { c.width = 1; c.height = 1; }
@@ -553,7 +554,7 @@ function render() {
     }
   }
   if (!S.full) {
-    ctx.save(); ctx.strokeStyle = cssVar('--text'); ctx.lineWidth = 3;
+    ctx.save(); ctx.strokeStyle = accentCol(); ctx.lineWidth = 3;
     ctx.setLineDash([7, 4]);
     for (i = 0; i < S.slots.length; i++) if (S.slots[i] !== null && S.sel.has(S.slots[i]) && !moving[S.slots[i]]) { var q = L.rects[i]; ctx.strokeRect(q[0] + 1.5, q[1] + 1.5, q[2] - 3, q[3] - 3); }
     if (S.popId !== null && !moving[S.popId]) {
