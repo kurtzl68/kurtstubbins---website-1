@@ -539,7 +539,7 @@ function render() {
     if (g) {
       ctx.save(); ctx.strokeStyle = cssVar('--text'); ctx.lineWidth = 2; ctx.setLineDash([]);
       S.stretch.ids.forEach(function (sid) { var sk = slotOf(sid); if (sk >= 0) { var sr = L.rects[sk]; ctx.strokeRect(sr[0] + 1, sr[1] + 1, sr[2] - 2, sr[3] - 2); } });
-      ['v', 'h'].forEach(function (n) {
+      ['r_', 'l', 'b', 't'].forEach(function (n) {
         var hc = g[n], q = 12;
         ctx.fillStyle = cssVar('--text'); ctx.fillRect(hc[0] - q, hc[1] - q, 2 * q, 2 * q);
         ctx.strokeStyle = cssVar('--bg'); ctx.lineWidth = 2; ctx.strokeRect(hc[0] - q, hc[1] - q, 2 * q, 2 * q);
@@ -843,12 +843,12 @@ function stretchRects() {                             /* handle centres for the 
   if (!S.stretch || !L) return null;
   var k = slotOf(S.stretch.id); if (k < 0) return null;
   var r = L.rects[k];
-  return { r: r, k: k, h: [r[0] + r[2], r[1] + r[3] / 2], v: [r[0] + r[2] / 2, r[1] + r[3]] };
+  return { r: r, k: k, r_: [r[0] + r[2], r[1] + r[3] / 2], l: [r[0], r[1] + r[3] / 2], b: [r[0] + r[2] / 2, r[1] + r[3]], t: [r[0] + r[2] / 2, r[1]] };
 }
 function stretchHit(p) {
   var g = stretchRects(); if (!g) return null;
-  var order = ['h', 'v'];
-  for (var i = 0; i < 2; i++) { var c = g[order[i]]; if (Math.abs(p.x - c[0]) <= HANDLE && Math.abs(p.y - c[1]) <= HANDLE) return order[i]; }
+  var order = ['r_', 'l', 'b', 't'];
+  for (var i = 0; i < 4; i++) { var c = g[order[i]]; if (Math.abs(p.x - c[0]) <= HANDLE && Math.abs(p.y - c[1]) <= HANDLE) return order[i]; }
   return null;
 }
 function stretchInfo() {
@@ -858,7 +858,7 @@ function stretchInfo() {
 function stretchEnter(id) {
   var ids = removeIds(id); S.stretch = { id: id, ids: ids };
   $('sbar').hidden = false; stretchInfo(); invalidate();
-  status('Drag a square: right edge = width, bottom edge = height. It snaps to the cell size. Tap empty space or DONE to finish.');
+  status('Drag a square: left/right edges = width, top/bottom edges = height. It snaps to the cell size. Tap empty space or DONE to finish.');
 }
 function stretchExit() { if (!S.stretch) return; S.stretch = null; S.sdrag = null; $('sbar').hidden = true; invalidate(); status('Stretch done.'); }
 function stretchReset() {
@@ -886,8 +886,8 @@ function stretchMove(e) {
   var d = S.sdrag, t = S.stretch; if (!d || !t) return;
   var p = pt(e), v = S.reg[t.id], e0 = v.rot % 180 ? [v.h, v.w] : [v.w, v.h], sc = L.scale || 1;
   var fx = 1, fy = 1;                                   /* factor applied to every selected tile, so their relative scaling is kept */
-  if (d.kind === 'h') fx = snapSize((d.w0 + p.x - d.x0) / sc, d.cw, sc) / e0[0] / d.sx0;
-  if (d.kind === 'v') fy = snapSize((d.h0 + p.y - d.y0) / sc, d.ch, sc) / e0[1] / d.sy0;
+  if (d.kind === 'r_' || d.kind === 'l') fx = snapSize((d.w0 + (d.kind === 'l' ? -1 : 1) * (p.x - d.x0)) / sc, d.cw, sc) / e0[0] / d.sx0;
+  if (d.kind === 'b' || d.kind === 't') fy = snapSize((d.h0 + (d.kind === 't' ? -1 : 1) * (p.y - d.y0)) / sc, d.ch, sc) / e0[1] / d.sy0;
   d.start.forEach(function (q) {
     var r = S.reg[q[0]]; if (!r) return;
     r.sx = Math.max(.25, Math.min(3, q[1] * fx)); r.sy = Math.max(.25, Math.min(3, q[2] * fy));
