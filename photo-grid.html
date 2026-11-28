@@ -172,7 +172,7 @@
 'use strict';
 /* ------------------------------------------------------------------ setup */
 var PHONE = Math.min(screen.width, screen.height) < 600;
-var MIN_N = 2, MAX_N = PHONE ? 6 : 12, UNDO_LIMIT = 40, EXPORT_PX = 16000000;   /* iOS Safari canvas limit is 16,777,216 px */
+var MIN_N = 1, MAX_N = PHONE ? 6 : 12, UNDO_LIMIT = 40, EXPORT_PX = 16000000;   /* iOS Safari canvas limit is 16,777,216 px */
 var $ = function (id) { return document.getElementById(id); };
 if (PHONE) document.body.classList.add('phone');
 var cv = $('cv'), ctx = cv.getContext('2d');
