@@ -92,10 +92,9 @@
     <span class="pad-only lbl">ROWS</span>
     <span class="pad-only step"><button data-cmd="rows-">-</button><i class="rowsVal">2</i><button data-cmd="rows+">+</button></span>
     <button class="b" data-cmd="add">ADD</button>
+    <button class="b" data-cmd="shuffle" id="bShuffle">SHUFFLE</button>
     <button class="b pad-only" data-cmd="full">FULL SCREEN</button>
     <button class="b pad-only" data-cmd="fit">FIT GRID</button>
-    <button class="b" data-cmd="undo" id="bUndo">UNDO</button>
-    <button class="b" data-cmd="redo" id="bRedo">REDO</button>
     <button class="b pad-only" data-cmd="grid" id="bGrid">GRID: ON</button>
     <button class="b pri" data-cmd="export">EXPORT<span class="lg">&nbsp;PNG</span></button>
     <button class="b pad-only" data-cmd="clear" id="bClear">CLEAR</button>
@@ -137,7 +136,6 @@
   <div class="row"><button class="b" data-cmd="full">FULL SCREEN</button><button class="b" data-cmd="fit">FIT GRID</button><button class="b" data-cmd="grid" id="bGrid2">GRID: ON</button></div>
   <div class="row"><span class="lbl">BACKGROUND</span><input type="color" id="bgsw" value="#000000" aria-label="Background color"><input class="nm" id="bghex" type="text" placeholder="THEME" maxlength="7" autocapitalize="off" autocomplete="off" spellcheck="false" style="max-width:110px"></div>
   <div class="row"><button class="b" data-cmd="pick">PICK FROM PHOTO</button><button class="b" data-cmd="bgreset">RESET</button></div>
-  <div class="row"><button class="b" data-cmd="shuffle">SHUFFLE</button></div>
   <div class="row"><button class="b err" data-cmd="clear" id="bClear2">CLEAR</button><button class="b" data-cmd="closesheet">CLOSE</button></div>
   <div class="mono">Up to 6 x 6 on iPhone.</div>
 </div></div>
@@ -172,6 +170,7 @@ var S = {
   drag: null, press: null, lastTap: 0, lastTapAt: 0, lastTapId: null, lastToggled: false,
   bgCustom: null, picking: false, pickDown: null, stretch: null, sdrag: null     /* custom background color (#rrggbb) - never saved, every launch starts on the theme */
 };
+var anim = null;                                       /* shuffle: tiles glide from their old rectangles to the new ones */
 var L = null, dpr = 1, cssW = 0, cssH = 0, dirty = false, clearTimer = 0, expBlob = null, expUrl = '', expCanvas = null, expFmt = 'png', expDims = null;
 
 /* --------------------------------------------------------- pure layout logic */
@@ -437,23 +436,44 @@ function fitGrid() {
   setSize(c, r);
   if (S.cols === c && S.rows === r) status('Grid fitted to ' + n + ' photos (' + c + ' x ' + r + ').');
 }
+var SHUF_STAGES = 3, SHUF_MS = 230;                    /* the tiles glide through two random layouts before settling on the last */
+function rectsById() { var o = {}; L = computeView(); S.slots.forEach(function (id, k) { if (id !== null) o[id] = L.rects[k].slice(); }); return o; }
+function sameSlots(a, b) { return a.length === b.length && a.every(function (v, q) { return v === b[q]; }); }
 function shuffleTiles() {                             /* random new positions; every tile keeps its own rotation, mirror, stretch and alignment */
+  if (S.shuffling) return;
   var sel = [], i, pool = [], n = S.slots.length;
   for (i = 0; i < n; i++) if (S.slots[i] !== null && S.sel.has(S.slots[i])) sel.push(i);
   if (sel.length) { for (i = 0; i < n; i++) if (S.slots[i] === null || S.sel.has(S.slots[i])) pool.push(i); }
   else { for (i = 0; i < n; i++) pool.push(i); }
   if (count() === 0) { status('Nothing to shuffle. Tap ADD to choose photos.'); return; }
   if (pool.length < 2) { status('Nothing to shuffle.'); return; }
-  var cur = pool.map(function (k) { return S.slots[k]; }), mix, tries = 0, same;
-  do {
-    mix = cur.slice();
-    for (i = mix.length - 1; i > 0; i--) { var j = Math.floor(Math.random() * (i + 1)), t = mix[i]; mix[i] = mix[j]; mix[j] = t; }
-    same = mix.every(function (v, q) { return v === cur[q]; }); tries++;
-  } while (same && tries < 30);
-  if (same) { status('Nothing to shuffle.'); return; }
+  var cur = pool.map(function (k) { return S.slots[k]; });
+  function deal(not) {
+    var mix, tries = 0, same;
+    do {
+      mix = cur.slice();
+      for (var a = mix.length - 1; a > 0; a--) { var b = Math.floor(Math.random() * (a + 1)), t = mix[a]; mix[a] = mix[b]; mix[b] = t; }
+      same = mix.every(function (v, q) { return v === not[q]; }); tries++;
+    } while (same && tries < 30);
+    return same ? null : mix;
+  }
+  var stages = [], prev = cur, m;
+  for (i = 0; i < SHUF_STAGES; i++) { m = deal(prev); if (!m) { if (i === 0) { status('Nothing to shuffle.'); return; } break; } stages.push(m); prev = m; }
   closePop(); stretchExit();
-  pushUndo(); pool.forEach(function (k, q) { S.slots[k] = mix[q]; });
-  syncUi(); invalidate(); status('Shuffled' + (sel.length ? ' the selected tiles.' : '.') + ' Undo to go back.');
+  pushUndo(); S.shuffling = true;
+  var before = S.slots.slice(), step = 0;
+  function run() {
+    var expect = step === 0 ? before : S.shufLast;
+    if (!sameSlots(S.slots, expect)) { S.shuffling = false; anim = null; invalidate(); return; }    /* undo, clear or an edit during the shuffle: stop */
+    var from = rectsById(), mix = stages[step];
+    pool.forEach(function (k, q) { S.slots[k] = mix[q]; });
+    S.shufLast = S.slots.slice();
+    syncUi(); anim = { from: from, t0: Date.now(), dur: SHUF_MS }; invalidate();
+    step++;
+    if (step < stages.length) setTimeout(run, SHUF_MS + 20);
+    else setTimeout(function () { S.shuffling = false; status('Shuffled' + (sel.length ? ' the selected tiles.' : '.') + ' Two-finger tap to undo.'); }, SHUF_MS + 20);
+  }
+  run();
 }
 function clearAll() {
   pushUndo(); S.cols = 2; S.rows = 2; S.slots = [null, null, null, null]; S.sel.clear(); closePop();
@@ -546,11 +566,17 @@ function render() {
     }
     ctx.restore();
   }
+  var an = anim, ek = 1;
+  if (an) { ek = Math.min(1, (Date.now() - an.t0) / an.dur); ek = ek < .5 ? 2 * ek * ek : 1 - Math.pow(-2 * ek + 2, 2) / 2; }
   for (i = 0; i < S.slots.length; i++) {
     var id = S.slots[i]; if (id === null || moving[id]) continue;
-    var r = L.rects[i]; drawTileTo(ctx, S.reg[id].bmp, S.reg[id], r[0], r[1], r[2], r[3]);
+    var r = L.rects[i], f0 = an && an.from[id];
+    if (f0) r = [f0[0] + (r[0] - f0[0]) * ek, f0[1] + (r[1] - f0[1]) * ek, f0[2] + (r[2] - f0[2]) * ek, f0[3] + (r[3] - f0[3]) * ek];
+    drawTileTo(ctx, S.reg[id].bmp, S.reg[id], r[0], r[1], r[2], r[3]);
   }
-  if (S.showGrid && !S.full && count() > 0) {          /* GRID: ON also frames every occupied cell, on top of the photos */
+  if (an && Date.now() - an.t0 >= an.dur) anim = null;
+  if (anim) invalidate();
+  if (S.showGrid && !S.full && !an && count() > 0) {          /* GRID: ON also frames every occupied cell, on top of the photos */
     ctx.save(); ctx.strokeStyle = gridCol(); ctx.globalAlpha = .7; ctx.setLineDash([]); ctx.lineWidth = 1;
     for (i = 0; i < S.slots.length; i++) if (S.slots[i] !== null) { var cc = L.cells[i]; ctx.strokeRect(cc[0] + .5, cc[1] + .5, cc[2] - 1, cc[3] - 1); }
     ctx.restore();
@@ -1166,7 +1192,7 @@ document.addEventListener('click', function (e) {
     else if (c === 'rows-') setSize(S.cols, S.rows - 1);
     else if (c === 'rows+') setSize(S.cols, S.rows + 1);
     else if (c === 'more') $('sheet').hidden = false;
-    else if (c === 'shuffle') { $('sheet').hidden = true; shuffleTiles(); }
+    else if (c === 'shuffle') shuffleTiles();
     else if (c === 'closesheet') $('sheet').hidden = true;
     else if (c === 'expclose') closeExport();
     else if (c === 'share') shareExport();
@@ -1243,7 +1269,7 @@ if (PHONE) $('app').appendChild($('pop'));       /* phone: the tile menu sits un
 try { S.showGrid = localStorage.getItem('pg-grid') !== '0'; syncUi(); } catch (e) { /* ignore */ }
 try { var th = localStorage.getItem('pg-theme'); if (th === 'light' || th === 'dark') setTheme(th); } catch (e) { /* ignore */ }
 syncUi(); resize();
-window.__pg = { normHex: normHex, S: S, view: function () { L = computeView(); return L; }, render: render, MAX_N: MAX_N };
+window.__pg = { normHex: normHex, S: S, view: function () { L = computeView(); return L; }, render: render, undo: function () { undo(); }, redo: function () { redo(); }, MAX_N: MAX_N };
 })();
 </script>
 </body>
